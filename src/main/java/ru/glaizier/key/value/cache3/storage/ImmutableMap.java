@@ -1,4 +1,4 @@
-package ru.glaizier.key.value.cache3.cache;
+package ru.glaizier.key.value.cache3.storage;
 
 import java.util.Optional;
 
