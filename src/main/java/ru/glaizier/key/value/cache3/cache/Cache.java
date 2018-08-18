@@ -16,7 +16,7 @@ public interface Cache<K, V> extends ImmutableMap<K, V> {
      * @param value
      * @return
      */
-    Optional<Map.Entry<K, V>> put(K key, V value);
+    Optional<Map.Entry<K, V>> put(@Nonnull K key, @Nonnull V value);
 
     /**
      * Removes first candidate to remove from cache
