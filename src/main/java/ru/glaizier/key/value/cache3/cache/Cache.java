@@ -5,6 +5,8 @@ import ru.glaizier.key.value.cache3.storage.RestrictedMap;
 import java.util.Map;
 import java.util.Optional;
 
+import javax.annotation.Nonnull;
+
 /**
  * @author GlaIZier
  */
@@ -12,9 +14,6 @@ public interface Cache<K, V> extends RestrictedMap<K, V> {
 
     /**
      * Put the element to the cache and get evicted element if exists
-     * @param key
-     * @param value
-     * @return
      */
     Optional<Map.Entry<K, V>> put(@Nonnull K key, @Nonnull V value);
 
