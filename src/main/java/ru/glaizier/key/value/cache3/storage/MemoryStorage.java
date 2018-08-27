@@ -5,21 +5,23 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import static java.util.Optional.ofNullable;
 
 
 public class MemoryStorage<K, V> implements Storage<K, V> {
 
-    private final Map<K, V> map;
+    private final ConcurrentMap<K, V> map;
 
-    public static <K, V> MemoryStorage<K, V> ofHashMap() {
-        return new MemoryStorage<>(new HashMap<>());
+    public MemoryStorage() {
+        map = new ConcurrentHashMap<>();
     }
 
-    public MemoryStorage(Map<K, V> map) {
-        Objects.requireNonNull(map, "map");
-        this.map = map;
+    public MemoryStorage(@Nonnull Map<? extends K, ? extends V> map) {
+        Objects.requireNonNull(map);
+        this.map = new ConcurrentHashMap<>(map);
     }
 
     @Override
