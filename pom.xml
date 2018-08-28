@@ -15,34 +15,60 @@
 
     <build>
         <plugins>
-            <plugin>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>ru.glaizier.Main</mainClass>
-                        </manifest>
-                    </archive>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>make-assembly</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>single</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+            <!-- Todo add some main class or remove it-->
+            <!--<plugin>-->
+                <!--<artifactId>maven-assembly-plugin</artifactId>-->
+                <!--<configuration>-->
+                    <!--<archive>-->
+                        <!--<manifest>-->
+                            <!--<mainClass>ru.glaizier.Main</mainClass>-->
+                        <!--</manifest>-->
+                    <!--</archive>-->
+                    <!--<descriptorRefs>-->
+                        <!--<descriptorRef>jar-with-dependencies</descriptorRef>-->
+                    <!--</descriptorRefs>-->
+                <!--</configuration>-->
+                <!--<executions>-->
+                    <!--<execution>-->
+                        <!--<id>make-assembly</id>-->
+                        <!--<phase>package</phase>-->
+                        <!--<goals>-->
+                            <!--<goal>single</goal>-->
+                        <!--</goals>-->
+                    <!--</execution>-->
+                <!--</executions>-->
+            <!--</plugin>-->
+            <!-- Todo Add surefire plugin -->
+            <!-- Todo add travis integration -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
+                    <compilerArguments>
+                        <Xmaxerrs>10000</Xmaxerrs>
+                        <Xmaxwarns>10000</Xmaxwarns>
+                    </compilerArguments>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.checkerframework</groupId>
+                            <artifactId>checker</artifactId>
+                            <version>2.5.4</version>
+                        </path>
+                    </annotationProcessorPaths>
+                    <annotationProcessors>
+                        <!-- Add all the checkers you want to enable here -->
+                        <annotationProcessor>org.checkerframework.checker.nullness.NullnessChecker</annotationProcessor>
+                    </annotationProcessors>
+                    <compilerArgs>
+                        <!-- Todo test without it and remove if not necessary-->
+                        <!--<arg>-AprintErrorStack</arg>-->
+                        <!-- location of the annotated JDK, which comes from a Maven dependency -->
+                        <!--<arg>-Xbootclasspath/p:${annotatedJdk}</arg>-->
+                        <!-- Uncomment the following line to turn type-checking warnings into errors. -->
+                        <!-- <arg>-Awarns</arg> -->
+                    </compilerArgs>
                 </configuration>
             </plugin>
         </plugins>
@@ -66,12 +92,31 @@
             <artifactId>groovy-all</artifactId>
             <version>2.4.15</version>
         </dependency>
-        <!--@NotNull, @Nullable-->
+        <!--@NotNull, @Nullable This annotations are used because they provides integration with Idea by default
+        (warnings) and with check framework. Lombok's @NonNull adds only check in the beginning of a method-->
         <dependency>
             <groupId>com.google.code.findbugs</groupId>
             <artifactId>jsr305</artifactId>
             <version>3.0.2</version>
         </dependency>
+        <!-- Checking @Nonnull and @Nullable. -->
+        <dependency>
+            <groupId>org.checkerframework</groupId>
+            <artifactId>checker</artifactId>
+            <version>2.5.4</version>
+        </dependency>
+        <!-- Todo test without it and remove if not necessary-->
+        <!--<dependency>-->
+            <!--<groupId>org.checkerframework</groupId>-->
+            <!--<artifactId>jdk8</artifactId>-->
+            <!--<version>2.5.4</version>-->
+        <!--</dependency>-->
+        <!--<dependency>-->
+            <!--<groupId>org.projectlombok</groupId>-->
+            <!--<artifactId>lombok</artifactId>-->
+            <!--<version>1.18.2</version>-->
+            <!--<scope>provided</scope>-->
+        <!--</dependency>-->
 
 
 

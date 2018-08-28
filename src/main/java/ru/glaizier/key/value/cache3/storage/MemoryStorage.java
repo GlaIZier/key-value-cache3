@@ -1,22 +1,21 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import javax.annotation.Nonnull;
+import static java.util.Optional.ofNullable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
-import static java.util.Optional.ofNullable;
+import javax.annotation.Nonnull;
 
 
 public class MemoryStorage<K, V> implements Storage<K, V> {
 
-    private final ConcurrentMap<K, V> map;
+    private final Map<K, V> map;
 
     public MemoryStorage() {
-        map = new ConcurrentHashMap<>();
+        map = new HashMap<>();
     }
 
     public MemoryStorage(@Nonnull Map<? extends K, ? extends V> map) {
