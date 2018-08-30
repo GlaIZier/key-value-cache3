@@ -25,12 +25,14 @@ public class MemoryStorage<K, V> implements Storage<K, V> {
 
     @Override
     public Optional<V> get(@Nonnull K key) {
+        Objects.requireNonNull(key);
         return ofNullable(map.get(key));
     }
 
     @Override
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key);
+        Objects.requireNonNull(value);
         return ofNullable(map.put(key, value));
     }
 
