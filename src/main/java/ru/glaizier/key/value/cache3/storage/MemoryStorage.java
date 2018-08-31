@@ -6,16 +6,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import javax.annotation.Nonnull;
 
 
 public class MemoryStorage<K, V> implements Storage<K, V> {
 
-    private final Map<K, V> map;
+    private final ConcurrentMap<K, V> map;
 
     public MemoryStorage() {
-        map = new HashMap<>();
+        map = new ConcurrentHashMap<>();
     }
 
     public MemoryStorage(@Nonnull Map<? extends K, ? extends V> map) {
