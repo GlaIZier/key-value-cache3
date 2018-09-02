@@ -10,7 +10,9 @@ import java.util.concurrent.ConcurrentMap;
 
 import static java.util.Optional.ofNullable;
 
-
+/**
+ * Guaranteed by concurrent collection
+ */
 @ThreadSafe
 public class MemoryStorage<K, V> implements Storage<K, V> {
 
