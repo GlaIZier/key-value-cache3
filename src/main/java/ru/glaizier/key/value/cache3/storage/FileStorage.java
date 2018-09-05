@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -32,12 +34,14 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     final static String FILENAME_FORMAT = "%d-%d.ser";
 
     // Todo rename temp dir
-    private final static Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache2");
+    private final static Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache3");
 
     private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)-(\\d+)\\.(ser)$");
 
     // Hashcode of key to List<Path> on the disk because there can be collisions
     private final Map<Integer, List<Path>> contents;
+
+    private final ConcurrentMap<Path, Object> lockMap = new ConcurrentHashMap<>();
 
     private final Path folder;
 
