@@ -27,7 +27,7 @@ import javax.annotation.Nonnull;
 
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
-
+// Todo create a single thread executor alternative to deal with io?
 public class FileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     // filename format: <keyHash>-<contentsListIndex>.ser
