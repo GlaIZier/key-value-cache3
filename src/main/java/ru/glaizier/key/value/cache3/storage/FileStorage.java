@@ -33,7 +33,6 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     // filename format: <keyHash>-<contentsListIndex>.ser
     final static String FILENAME_FORMAT = "%d-%d.ser";
 
-    // Todo rename temp dir
     private final static Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache3");
 
     private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)-(\\d+)\\.(ser)$");
