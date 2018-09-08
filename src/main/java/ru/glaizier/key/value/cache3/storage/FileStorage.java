@@ -1,21 +1,11 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import static java.lang.String.format;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
@@ -23,8 +13,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import javax.annotation.Nonnull;
-
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -155,7 +145,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
      * in a list of paths - specific entry using deserialization and keys' equality
      */
     private Optional<? extends Element<K, V>> findElement(K key) {
-        Optional<List<Path>> keyPathsOpt = Optional.ofNullable(contents.get(key.hashCode()));
+        Optional<List<Path>> keyPathsOpt = ofNullable(contents.get(key.hashCode()));
         // Use iteration through indexes as we use ArrayList for contents => list.get(index) will work fast
         return keyPathsOpt.flatMap(keyPaths ->
                 IntStream.range(0, keyPaths.size())
@@ -190,7 +180,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         // remove from disk
         wrap(Files::deleteIfExists, StorageException.class).apply(element.path);
         // remove from contents
-        Optional<List<Path>> keyPathsOpt = Optional.ofNullable(contents.get(element.key.hashCode()));
+        Optional<List<Path>> keyPathsOpt = ofNullable(contents.get(element.key.hashCode()));
         // remove from key paths
         Optional<Element<K, V>> removedElement = keyPathsOpt
                 .map(keyPaths -> {
@@ -208,7 +198,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     private Element<K, V> putVal(K key, V value) {
         Path serialized = serialize(key, value);
         // update contents
-        List<Path> keyPaths = Optional.ofNullable(contents.get(key.hashCode()))
+        List<Path> keyPaths = ofNullable(contents.get(key.hashCode()))
                 .orElseGet(() -> {
                     List<Path> newKeyPaths = new ArrayList<>();
                     contents.put(key.hashCode(), newKeyPaths);
@@ -219,7 +209,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     private Path serialize(K key, V value) {
-        Optional<List<Path>> keyPathsOpt = Optional.ofNullable(contents.get(key.hashCode()));
+        Optional<List<Path>> keyPathsOpt = ofNullable(contents.get(key.hashCode()));
         String fileName = format(FILENAME_FORMAT, key.hashCode(), keyPathsOpt.map(List::size).orElse(0));
         Path serialized = folder.resolve(fileName);
         Map.Entry<K, V> entryToSerialize = new AbstractMap.SimpleImmutableEntry<>(key, value);
