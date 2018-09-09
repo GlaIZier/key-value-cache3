@@ -30,6 +30,8 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     // Hashcode of key to List<Path> on the disk because there can be collisions
     private final Map<Integer, List<Path>> contents;
 
+    private final ConcurrentMap<K, Path> con;
+
     private final ConcurrentMap<Path, Object> lockMap = new ConcurrentHashMap<>();
 
     private final Path folder;
@@ -100,6 +102,10 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
                     else
                         throw new IllegalStateException("Didn't find group in regexp!");
                 }));
+    }
+
+    static <K> ConcurrentMap<K, Path> buildContents(Class<K> keyClass, Path folder) throws IOException {
+        return null;
     }
 
     @Override
