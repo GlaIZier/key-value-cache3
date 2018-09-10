@@ -6,8 +6,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -15,6 +17,8 @@ import java.util.stream.IntStream;
 
 import static java.lang.String.format;
 import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -81,6 +85,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
                 Files.createDirectories(folder);
             }
             contents = createContents(folder);
+            con = buildContents(folder);
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
@@ -97,6 +102,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
                 .collect(Collectors.groupingBy(path -> {
                     String fileName = path.getFileName().toString();
                     Matcher matcher = FILENAME_PATTERN.matcher(fileName);
+
                     if (matcher.find())
                         return Integer.parseInt(matcher.group(1));
                     else
@@ -104,8 +110,15 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
                 }));
     }
 
-    static <K> ConcurrentMap<K, Path> buildContents(Class<K> keyClass, Path folder) throws IOException {
-        return null;
+    private ConcurrentMap<K, Path> buildContents(Path folder) throws IOException {
+        return Files.walk(folder)
+            .filter(Files::isRegularFile)
+            .filter(path -> Objects.nonNull(path.getFileName()))
+            .filter(path -> {
+                String fileName = path.getFileName().toString();
+                return FILENAME_PATTERN.matcher(fileName).find();
+            })
+            .collect(toConcurrentMap(path -> deserialize(path).getKey(), Function.identity()));
     }
 
     @Override
@@ -173,7 +186,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
             Map.Entry deserialized = (Map.Entry) ois.readObject();
             K key = (K) deserialized.getKey();
             V value = (V) deserialized.getValue();
-            return new AbstractMap.SimpleImmutableEntry<>(key, value);
+            return new SimpleImmutableEntry<>(key, value);
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
@@ -218,7 +231,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         Optional<List<Path>> keyPathsOpt = ofNullable(contents.get(key.hashCode()));
         String fileName = format(FILENAME_FORMAT, key.hashCode(), keyPathsOpt.map(List::size).orElse(0));
         Path serialized = folder.resolve(fileName);
-        Map.Entry<K, V> entryToSerialize = new AbstractMap.SimpleImmutableEntry<>(key, value);
+        Map.Entry<K, V> entryToSerialize = new SimpleImmutableEntry<>(key, value);
         try(FileOutputStream fos = new FileOutputStream(serialized.toFile());
             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
             oos.writeObject(entryToSerialize);
