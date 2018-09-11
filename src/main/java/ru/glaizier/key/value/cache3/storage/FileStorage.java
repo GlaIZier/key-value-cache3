@@ -91,6 +91,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         }
     }
 
+    @Deprecated
     static Map<Integer, List<Path>> createContents(Path folder) throws IOException {
         return Files.walk(folder)
                 .filter(Files::isRegularFile)
