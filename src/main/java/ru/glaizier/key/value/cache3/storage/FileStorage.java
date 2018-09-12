@@ -123,6 +123,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
+    @Deprecated
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         return findElement(key).map(Element::getValue);
