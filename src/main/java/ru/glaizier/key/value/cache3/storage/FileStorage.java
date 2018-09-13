@@ -130,6 +130,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
+    @Deprecated
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key);
         Objects.requireNonNull(value);
