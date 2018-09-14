@@ -114,11 +114,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     private ConcurrentMap<K, Path> buildContents(Path folder) throws IOException {
         return Files.walk(folder)
             .filter(Files::isRegularFile)
-            .filter(path -> Objects.nonNull(path.getFileName()))
-            .filter(path -> {
-                String fileName = path.getFileName().toString();
-                return FILENAME_PATTERN.matcher(fileName).find();
-            })
+            .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
             .collect(toConcurrentMap(path -> deserialize(path).getKey(), Function.identity()));
     }
 
