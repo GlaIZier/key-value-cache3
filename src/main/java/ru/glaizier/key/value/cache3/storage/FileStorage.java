@@ -5,8 +5,8 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
 import java.util.AbstractMap.SimpleImmutableEntry;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
@@ -18,7 +18,6 @@ import java.util.stream.IntStream;
 import static java.lang.String.format;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toConcurrentMap;
-
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -137,6 +136,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
+    @Deprecated
     public Optional<V> remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         return findElement(key)
