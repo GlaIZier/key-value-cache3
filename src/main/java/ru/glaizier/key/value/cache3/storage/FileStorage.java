@@ -152,6 +152,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
+    @Deprecated
     public int getSize() {
         return contents.values().stream()
                 .mapToInt(List::size)
