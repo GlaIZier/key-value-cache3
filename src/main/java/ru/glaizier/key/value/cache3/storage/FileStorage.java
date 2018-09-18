@@ -1,23 +1,36 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import javax.annotation.Nonnull;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.AbstractMap.SimpleImmutableEntry;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -25,6 +38,8 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
 
     // filename format: <keyHash>-<contentsListIndex>.ser
     final static String FILENAME_FORMAT = "%d-%d.ser";
+
+    private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final static Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache3");
 
@@ -114,7 +129,16 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         return Files.walk(folder)
             .filter(Files::isRegularFile)
             .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
-            .collect(toConcurrentMap(path -> deserialize(path).getKey(), Function.identity()));
+            .map(path -> {
+                try {
+                    return new SimpleImmutableEntry<>(deserialize(path).getKey(), path);
+                } catch (Exception e) {
+                    log.error("Couldn't deserialize key-value for the path: " + path, e);
+                    return null;
+                }
+            })
+            .filter(Objects::nonNull)
+            .collect(toConcurrentMap(SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
     }
 
     @Override
