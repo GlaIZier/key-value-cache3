@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -50,7 +51,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
 
     private final ConcurrentMap<K, Path> con;
 
-    private final ConcurrentMap<Path, Object> lockMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Path, ReentrantReadWriteLock> lockMap = new ConcurrentHashMap<>();
 
     private final Path folder;
 
