@@ -126,22 +126,6 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
                 }));
     }
 
-    private ConcurrentMap<K, Path> buildContents(Path folder) throws IOException {
-        return Files.walk(folder)
-            .filter(Files::isRegularFile)
-            .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
-            .map(path -> {
-                try {
-                    return new SimpleImmutableEntry<>(deserialize(path).getKey(), path);
-                } catch (Exception e) {
-                    log.error("Couldn't deserialize key-value for the path: " + path, e);
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull)
-            .collect(toConcurrentMap(SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
-    }
-
     @Override
     @Deprecated
     public Optional<V> get(@Nonnull K key) {
@@ -165,8 +149,8 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     public Optional<V> remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         return findElement(key)
-                .flatMap(this::remove)
-                .map(Element::getValue);
+            .flatMap(this::remove)
+            .map(Element::getValue);
     }
 
     @Override
@@ -180,9 +164,9 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     @Deprecated
     public int getSize() {
         return contents.values().stream()
-                .mapToInt(List::size)
-                .reduce(Integer::sum)
-                .orElse(0);
+            .mapToInt(List::size)
+            .reduce(Integer::sum)
+            .orElse(0);
     }
 
     /**
@@ -193,14 +177,14 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         Optional<List<Path>> keyPathsOpt = ofNullable(contents.get(key.hashCode()));
         // Use iteration through indexes as we use ArrayList for contents => list.get(index) will work fast
         return keyPathsOpt.flatMap(keyPaths ->
-                IntStream.range(0, keyPaths.size())
-                        .mapToObj(i -> {
-                            Path path = keyPaths.get(i);
-                            Map.Entry<K, V> deserialized = deserialize(path);
-                            return new Element<>(deserialized.getKey(), deserialized.getValue(), path, i);
-                        })
-                        .filter(element -> key.equals(element.key))
-                        .findFirst()
+            IntStream.range(0, keyPaths.size())
+                .mapToObj(i -> {
+                    Path path = keyPaths.get(i);
+                    Map.Entry<K, V> deserialized = deserialize(path);
+                    return new Element<>(deserialized.getKey(), deserialized.getValue(), path, i);
+                })
+                .filter(element -> key.equals(element.key))
+                .findFirst()
         );
 
     }
@@ -228,14 +212,14 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         Optional<List<Path>> keyPathsOpt = ofNullable(contents.get(element.key.hashCode()));
         // remove from key paths
         Optional<Element<K, V>> removedElement = keyPathsOpt
-                .map(keyPaths -> {
-                    keyPaths.remove(element.contentsListIndex);
-                    return element;
-                });
+            .map(keyPaths -> {
+                keyPaths.remove(element.contentsListIndex);
+                return element;
+            });
         // remove the whole key if it was the only key
         keyPathsOpt
-                .filter(List::isEmpty)
-                .ifPresent(keyPaths -> contents.remove(element.key.hashCode()));
+            .filter(List::isEmpty)
+            .ifPresent(keyPaths -> contents.remove(element.key.hashCode()));
         return removedElement;
     }
 
@@ -244,11 +228,11 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         Path serialized = serialize(key, value);
         // update contents
         List<Path> keyPaths = ofNullable(contents.get(key.hashCode()))
-                .orElseGet(() -> {
-                    List<Path> newKeyPaths = new ArrayList<>();
-                    contents.put(key.hashCode(), newKeyPaths);
-                    return newKeyPaths;
-                });
+            .orElseGet(() -> {
+                List<Path> newKeyPaths = new ArrayList<>();
+                contents.put(key.hashCode(), newKeyPaths);
+                return newKeyPaths;
+            });
         keyPaths.add(serialized);
         return new Element<>(key, value, serialized, keyPaths.size() - 1);
     }
@@ -265,6 +249,22 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
+    }
+
+    private ConcurrentMap<K, Path> buildContents(Path folder) throws IOException {
+        return Files.walk(folder)
+            .filter(Files::isRegularFile)
+            .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
+            .map(path -> {
+                try {
+                    return new SimpleImmutableEntry<>(deserialize(path).getKey(), path);
+                } catch (Exception e) {
+                    log.error("Couldn't deserialize key-value for the path: " + path, e);
+                    return null;
+                }
+            })
+            .filter(Objects::nonNull)
+            .collect(toConcurrentMap(SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
     }
 
 }
