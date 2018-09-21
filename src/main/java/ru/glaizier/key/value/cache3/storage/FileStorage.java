@@ -19,9 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -51,7 +51,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
 
     private final ConcurrentMap<K, Path> con;
 
-    private final ConcurrentMap<Path, ReentrantReadWriteLock> lockMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<K, Object> locks;
 
     private final Path folder;
 
@@ -101,6 +101,7 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
             }
             contents = createContents(folder);
             con = buildContents(folder);
+            locks = buildLocks(con.keySet());
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
@@ -265,6 +266,10 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
             })
             .filter(Objects::nonNull)
             .collect(toConcurrentMap(SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
+    }
+
+    private ConcurrentMap<K, Object> buildLocks(Set<K> keys) throws IOException {
+        return keys.stream().collect(toConcurrentMap(Function.identity(), v -> new Object()));
     }
 
 }
