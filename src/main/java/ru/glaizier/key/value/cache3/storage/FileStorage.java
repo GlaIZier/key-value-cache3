@@ -1,25 +1,16 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nonnull;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.AbstractMap.SimpleImmutableEntry;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -27,14 +18,13 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import javax.annotation.Nonnull;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
+// Todo add @ThreadSafe and @GuardedBy
 public class FileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     // filename format: <keyHash>-<contentsListIndex>.ser
@@ -270,6 +260,10 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
 
     private ConcurrentMap<K, Object> buildLocks(Set<K> keys) throws IOException {
         return keys.stream().collect(toConcurrentMap(Function.identity(), v -> new Object()));
+    }
+
+    public int getSizeConcurrent() {
+        return con.size();
     }
 
 }
