@@ -11,8 +11,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.*;
-import java.util.concurrent.ConcurrentMap;
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -20,11 +18,9 @@ import java.util.stream.IntStream;
 
 import static java.lang.String.format;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
-// Todo create a single thread executor alternative to deal with io?
-// Todo add @ThreadSafe and @GuardedBy
+@Deprecated
 public class FileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     // filename format: <keyHash>-<contentsListIndex>.ser
@@ -38,10 +34,6 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
 
     // Hashcode of key to List<Path> on the disk because there can be collisions
     private final Map<Integer, List<Path>> contents;
-
-    private final ConcurrentMap<K, Path> con;
-
-    private final ConcurrentMap<K, Object> locks;
 
     private final Path folder;
 
@@ -90,14 +82,11 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
                 Files.createDirectories(folder);
             }
             contents = createContents(folder);
-            con = buildContents(folder);
-            locks = buildLocks(con.keySet());
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
     }
 
-    @Deprecated
     static Map<Integer, List<Path>> createContents(Path folder) throws IOException {
         return Files.walk(folder)
                 .filter(Files::isRegularFile)
@@ -118,14 +107,12 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
-    @Deprecated
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         return findElement(key).map(Element::getValue);
     }
 
     @Override
-    @Deprecated
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key);
         Objects.requireNonNull(value);
@@ -136,7 +123,6 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
-    @Deprecated
     public Optional<V> remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         return findElement(key)
@@ -145,14 +131,12 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
     }
 
     @Override
-    @Deprecated
     public boolean contains(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         return findElement(key).isPresent();
     }
 
     @Override
-    @Deprecated
     public int getSize() {
         return contents.values().stream()
             .mapToInt(List::size)
@@ -240,30 +224,6 @@ public class FileStorage<K extends Serializable, V extends Serializable> impleme
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
-    }
-
-    private ConcurrentMap<K, Path> buildContents(Path folder) throws IOException {
-        return Files.walk(folder)
-            .filter(Files::isRegularFile)
-            .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
-            .map(path -> {
-                try {
-                    return new SimpleImmutableEntry<>(deserialize(path).getKey(), path);
-                } catch (Exception e) {
-                    log.error("Couldn't deserialize key-value for the path: " + path, e);
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull)
-            .collect(toConcurrentMap(SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
-    }
-
-    private ConcurrentMap<K, Object> buildLocks(Set<K> keys) throws IOException {
-        return keys.stream().collect(toConcurrentMap(Function.identity(), v -> new Object()));
-    }
-
-    public int getSizeConcurrent() {
-        return con.size();
     }
 
 }
