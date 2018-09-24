@@ -4,41 +4,48 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.concurrent.Immutable;
 import javax.annotation.concurrent.ThreadSafe;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.AbstractMap.SimpleImmutableEntry;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toConcurrentMap;
+
+import ru.glaizier.key.value.cache3.util.function.Entry;
 
 // Todo create a single thread executor alternative to deal with io?
 // Todo add @ThreadSafe and @GuardedBy
 @ThreadSafe
 public class FileStorageConcurrent<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
-    // filename format: <keyHash>-<contentsListIndex>.ser
-    final static String FILENAME_FORMAT = "%d-%d.ser";
+    // filename format: <keyHash>-<uuid>.ser
+    final static String FILENAME_FORMAT = "%d#%s.ser";
 
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final static Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache3");
 
-    private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)-(\\d+)\\.(ser)$");
+    private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
 
-    private final ConcurrentMap<K, Path> con;
+    private final ConcurrentMap<K, Path> contents;
 
     private final ConcurrentMap<K, Object> locks;
 
@@ -55,8 +62,8 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
             if (Files.notExists(folder)) {
                 Files.createDirectories(folder);
             }
-            con = buildContents(folder);
-            locks = buildLocks(con.keySet());
+            contents = buildContents(folder);
+            locks = buildLocks(contents.keySet());
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
@@ -68,14 +75,14 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
                 .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
                 .map(path -> {
                     try {
-                        return new SimpleImmutableEntry<>(deserialize(path).getKey(), path);
+                        return new Entry<>(deserialize(path).key, path);
                     } catch (Exception e) {
                         log.error("Couldn't deserialize key-value for the path: " + path, e);
                         return null;
                     }
                 })
                 .filter(Objects::nonNull)
-                .collect(toConcurrentMap(SimpleImmutableEntry::getKey, SimpleImmutableEntry::getValue));
+                .collect(toConcurrentMap(entry -> entry.key, entry -> entry.value));
     }
 
     private ConcurrentMap<K, Object> buildLocks(Set<K> keys) throws IOException {
@@ -104,37 +111,36 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     @Override
     public int getSize() {
-        return con.size();
+        return contents.size();
     }
 
 
+    // Not thread safe. Call with proper sync if needed
     @SuppressWarnings("unchecked")
-    private Map.Entry<K, V> deserialize(Path path) {
+    private Entry<K, V> deserialize(Path path) {
         try (FileInputStream fis = new FileInputStream(path.toFile());
              ObjectInputStream ois = new ObjectInputStream(fis)) {
-            Map.Entry deserialized = (Map.Entry) ois.readObject();
-            K key = (K) deserialized.getKey();
-            V value = (V) deserialized.getValue();
-            return new SimpleImmutableEntry<>(key, value);
+            return (Entry) ois.readObject();
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
     }
 
-    // Todo
+    // Not thread safe. Call with proper sync if needed
     private Path serialize(K key, V value) {
-//        Optional<Path> pathOpt = ofNullable(con.get(key));
-//        String fileName = format(FILENAME_FORMAT, key.hashCode(), pathOpt.map(List::size).orElse(0));
-//        Path serialized = folder.resolve(fileName);
-//        Map.Entry<K, V> entryToSerialize = new SimpleImmutableEntry<>(key, value);
-//        try(FileOutputStream fos = new FileOutputStream(serialized.toFile());
-//            ObjectOutputStream oos = new ObjectOutputStream(fos)) {
-//            oos.writeObject(entryToSerialize);
-//            return serialized;
-//        } catch (Exception e) {
-//            throw new StorageException(e.getMessage(), e);
-//        }
-        return null;
+        Path serialized = ofNullable(contents.get(key))
+            .orElseGet(() -> {
+                String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
+                return folder.resolve(filename);
+            });
+        try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
+             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
+            Entry<K, V> entry = new Entry<>(key, value);
+            oos.writeObject(entry);
+            return serialized;
+        } catch (Exception e) {
+            throw new StorageException(e.getMessage(), e);
+        }
     }
 
 }
