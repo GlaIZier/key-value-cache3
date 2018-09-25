@@ -1,4 +1,4 @@
-package ru.glaizier.key.value.cache3.util.function;
+package ru.glaizier.key.value.cache3.util;
 
 import java.io.Serializable;
 

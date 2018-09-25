@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-import javax.annotation.concurrent.Immutable;
 import javax.annotation.concurrent.ThreadSafe;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -16,24 +15,28 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static java.lang.String.format;
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toConcurrentMap;
 
-import ru.glaizier.key.value.cache3.util.function.Entry;
+import ru.glaizier.key.value.cache3.util.Entry;
 
 // Todo create a single thread executor alternative to deal with io?
-// Todo add @ThreadSafe and @GuardedBy
+// Todo @GuardedBy
 @ThreadSafe
+@SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
 public class FileStorageConcurrent<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     // filename format: <keyHash>-<uuid>.ser
@@ -45,6 +48,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
 
+    // Todo do I need locks in a separate map or I can use path in contents as a lock
     private final ConcurrentMap<K, Path> contents;
 
     private final ConcurrentMap<K, Object> locks;
@@ -91,7 +95,14 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     @Override
     public Optional<V> get(@Nonnull K key) {
-        return null;
+        Objects.requireNonNull(key, "key");
+
+        return ofNullable(locks.get(key))
+            .map(lock -> {
+                synchronized (lock) {
+                    return deserialize(contents.get(key)).value;
+                }
+            });
     }
 
     @Override
@@ -106,7 +117,8 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     @Override
     public boolean contains(@Nonnull K key) {
-        return false;
+        Objects.requireNonNull(key, "key");
+        return contents.containsKey(key);
     }
 
     @Override
@@ -115,8 +127,9 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     }
 
 
-    // Not thread safe. Call with proper sync if needed
+    // Not thread-safe. Call with proper sync if needed
     @SuppressWarnings("unchecked")
+    // Todo add FileLock?
     private Entry<K, V> deserialize(Path path) {
         try (FileInputStream fis = new FileInputStream(path.toFile());
              ObjectInputStream ois = new ObjectInputStream(fis)) {
@@ -126,7 +139,8 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
         }
     }
 
-    // Not thread safe. Call with proper sync if needed
+    // Not thread-safe. Call with proper sync if needed
+    // Todo add FileLock?
     private Path serialize(K key, V value) {
         Path serialized = ofNullable(contents.get(key))
             .orElseGet(() -> {
