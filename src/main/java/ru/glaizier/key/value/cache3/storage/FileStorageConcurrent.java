@@ -12,6 +12,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -129,32 +130,40 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     // Not thread-safe. Call with proper sync if needed
     @SuppressWarnings("unchecked")
-    // Todo add FileLock?
     private Entry<K, V> deserialize(Path path) {
-        try (FileInputStream fis = new FileInputStream(path.toFile());
-             ObjectInputStream ois = new ObjectInputStream(fis)) {
-            return (Entry) ois.readObject();
+        try (FileInputStream fis = new FileInputStream(path.toFile())) {
+            // lock access to the file by OS
+            FileLock fileLock = fis.getChannel().lock();
+            try (ObjectInputStream ois = new ObjectInputStream(fis)) {
+                return (Entry) ois.readObject();
+            } finally {
+                fileLock.release();
+            }
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
     }
 
     // Not thread-safe. Call with proper sync if needed
-    // Todo add FileLock?
     private Path serialize(K key, V value) {
         Path serialized = ofNullable(contents.get(key))
             .orElseGet(() -> {
                 String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
                 return folder.resolve(filename);
             });
-        try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
-             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
-            Entry<K, V> entry = new Entry<>(key, value);
-            oos.writeObject(entry);
-            return serialized;
+        Entry<K, V> entry = new Entry<>(key, value);
+        try (FileOutputStream fos = new FileOutputStream(serialized.toFile())) {
+            // lock access to the file by OS
+            FileLock fileLock = fos.getChannel().lock();
+            try (ObjectOutputStream oos = new ObjectOutputStream(fos)){
+                oos.writeObject(entry);
+            } finally {
+                fileLock.release();
+            }
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
+        return serialized;
     }
 
 }
