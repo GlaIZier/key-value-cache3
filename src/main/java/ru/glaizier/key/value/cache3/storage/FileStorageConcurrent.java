@@ -50,9 +50,8 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
 
     // Todo do I need locks in a separate map or I can use path in contents as a lock
+    // Values are also used as locks
     private final ConcurrentMap<K, Path> contents;
-
-    private final ConcurrentMap<K, Object> locks;
 
     private final Path folder;
 
@@ -68,7 +67,6 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
                 Files.createDirectories(folder);
             }
             contents = buildContents(folder);
-            locks = buildLocks(contents.keySet());
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
@@ -90,29 +88,38 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
                 .collect(toConcurrentMap(entry -> entry.key, entry -> entry.value));
     }
 
-    private ConcurrentMap<K, Object> buildLocks(Set<K> keys) throws IOException {
-        return keys.stream().collect(toConcurrentMap(Function.identity(), v -> new Object()));
-    }
-
     @Override
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
 
-        return ofNullable(locks.get(key))
-            .map(lock -> {
-                synchronized (lock) {
-                    return deserialize(contents.get(key)).value;
+        // Todo double check lock?
+        return ofNullable(contents.get(key))
+            .map(path -> {
+                synchronized (path) {
+                    return deserialize(path).value;
                 }
             });
     }
 
     @Override
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
+//        Objects.requireNonNull(key);
+//        Objects.requireNonNull(value);
+//
+//        Object lock = locks.computeIfAbsent(key, k -> new Object());
+//
+//        Optional<V> prevValue = remove(key);
+//
+//        putVal(key, value);
+//        return prevValue;
+
         return null;
     }
 
     @Override
     public Optional<V> remove(@Nonnull K key) {
+        Objects.requireNonNull(key, "key");
+
         return null;
     }
 
