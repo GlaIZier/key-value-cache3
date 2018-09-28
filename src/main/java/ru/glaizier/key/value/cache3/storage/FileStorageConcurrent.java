@@ -49,7 +49,6 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
 
-    // Todo do I need locks in a separate map or I can use path in contents as a lock
     private final ConcurrentMap<K, Path> contents;
 
     private final ConcurrentMap<K, Object> locks;
@@ -98,10 +97,14 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
 
-        return ofNullable(locks.get(key))
-            .map(lock -> {
+        // double check-lock
+        return ofNullable(contents.get(key))
+            .flatMap(path -> {
+                Object lock = locks.get(key);
                 synchronized (lock) {
-                    return deserialize(contents.get(key)).value;
+                    validateInvariant(key);
+                    return ofNullable(contents.get(key))
+                        .map(lockedPath -> deserialize(lockedPath).value);
                 }
             });
     }
@@ -164,6 +167,20 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
             throw new StorageException(e.getMessage(), e);
         }
         return serialized;
+    }
+
+    // Todo remove this invariant checks after testing?
+    // Not thread-safe. Call with proper sync if needed
+    private void validateInvariant(K key) {
+        Path path = contents.get(key);
+        Object lock = locks.get(key);
+        boolean fileExists = path != null && Files.exists(path);
+        if ((path == null && lock == null) ||
+            (path != null && lock != null && fileExists))
+            return;
+
+        throw new IllegalStateException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
+            path, lock, fileExists));
     }
 
 }
