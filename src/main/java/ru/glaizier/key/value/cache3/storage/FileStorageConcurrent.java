@@ -2,15 +2,11 @@ package ru.glaizier.key.value.cache3.storage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.glaizier.key.value.cache3.util.Entry;
 
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
@@ -20,19 +16,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import static java.lang.String.format;
-import static java.util.Optional.empty;
-import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toConcurrentMap;
-
-import ru.glaizier.key.value.cache3.util.Entry;
+import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
 // Todo @GuardedBy
@@ -111,12 +102,40 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     @Override
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
-        return null;
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(value, "value");
+
+        Object lock = locks.computeIfAbsent(key, k -> new Object());
+        synchronized (lock) {
+            // Todo possible deadlock?
+            Optional<V> prevValue = get(key);
+            // Todo introduce file lock check and hold
+            ofNullable(contents.get(key)).ifPresent(prevPath -> wrap(Files::deleteIfExists, StorageException.class).apply(prevPath));
+            Path newPath = serialize(key, value);
+            contents.put(key, newPath);
+            return prevValue;
+        }
     }
 
     @Override
     public Optional<V> remove(@Nonnull K key) {
-        return null;
+        Objects.requireNonNull(key, "key");
+
+        // double check-lock
+        // Todo introduce the common method for double-check lock
+        return ofNullable(contents.get(key))
+                .flatMap(path -> {
+                    Object lock = locks.get(key);
+                    synchronized (lock) {
+                        validateInvariant(key);
+                        return ofNullable(contents.get(key))
+                                .map(lockedPath -> {
+                                    V removedValue = deserialize(lockedPath).value;
+                                    remove(key, lockedPath);
+                                    return removedValue;
+                                });
+                    }
+                });
     }
 
     @Override
@@ -181,6 +200,17 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
         throw new IllegalStateException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
             path, lock, fileExists));
+    }
+
+    // Not thread-safe. Call with proper sync if needed
+    private void remove(K key, Path path) {
+        // remove from disk
+        // Todo introduce file lock check and hold
+        wrap(Files::deleteIfExists, StorageException.class).apply(path);
+        // remove from contents and locks
+        contents.remove(key);
+        // remove from locks
+        locks.remove(key);
     }
 
 }
