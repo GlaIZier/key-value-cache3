@@ -40,6 +40,7 @@
             <!--</plugin>-->
             <!-- Todo Add surefire plugin -->
             <!-- Todo add travis integration -->
+            <!-- Todo checker framework works with java <= 8. Add profiles to avoid checker framework on Java > 8-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -105,12 +106,6 @@
             <artifactId>checker</artifactId>
             <version>2.5.4</version>
         </dependency>
-        <!-- Todo test without it and remove if not necessary-->
-        <!--<dependency>-->
-            <!--<groupId>org.checkerframework</groupId>-->
-            <!--<artifactId>jdk8</artifactId>-->
-            <!--<version>2.5.4</version>-->
-        <!--</dependency>-->
 
 
 

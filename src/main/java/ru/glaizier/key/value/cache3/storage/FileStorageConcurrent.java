@@ -155,6 +155,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     private Entry<K, V> deserialize(Path path) {
         try (FileInputStream fis = new FileInputStream(path.toFile())) {
             // lock access to the file by OS
+            // Todo check it
             FileLock fileLock = fis.getChannel().lock();
             try (ObjectInputStream ois = new ObjectInputStream(fis)) {
                 return (Entry) ois.readObject();
@@ -179,8 +180,9 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
             FileLock fileLock = fos.getChannel().lock();
             try (ObjectOutputStream oos = new ObjectOutputStream(fos)){
                 oos.writeObject(entry);
-            } finally {
+                // Todo check it
                 fileLock.release();
+            } finally {
             }
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
