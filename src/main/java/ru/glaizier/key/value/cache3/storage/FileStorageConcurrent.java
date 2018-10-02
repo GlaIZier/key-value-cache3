@@ -8,6 +8,8 @@ import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -149,15 +151,14 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
         return contents.size();
     }
 
-
     // Not thread-safe. Call with proper sync if needed
     @SuppressWarnings("unchecked")
     private Entry<K, V> deserialize(Path path) {
-        try (FileInputStream fis = new FileInputStream(path.toFile())) {
-            // lock access to the file by OS
-            // Todo check it
-            FileLock fileLock = fis.getChannel().lock();
-            try (ObjectInputStream ois = new ObjectInputStream(fis)) {
+        try (FileChannel channel = FileChannel.open(path);
+             ObjectInputStream ois = new ObjectInputStream(Channels.newInputStream(channel))) {
+            // create a shared lock to let other processes to read too
+            FileLock fileLock = channel.lock(0L, Long.MAX_VALUE, true);
+            try {
                 return (Entry) ois.readObject();
             } finally {
                 fileLock.release();
@@ -167,6 +168,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
         }
     }
 
+
     // Not thread-safe. Call with proper sync if needed
     private Path serialize(K key, V value) {
         Path serialized = ofNullable(contents.get(key))
@@ -174,20 +176,21 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
                 String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
                 return folder.resolve(filename);
             });
-        Entry<K, V> entry = new Entry<>(key, value);
-        try (FileOutputStream fos = new FileOutputStream(serialized.toFile())) {
-            // lock access to the file by OS
-            FileLock fileLock = fos.getChannel().lock();
-            try (ObjectOutputStream oos = new ObjectOutputStream(fos)){
+        try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
+             FileChannel channel = fos.getChannel();
+             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
+            // exclusive lock access to the file by OS
+            FileLock fileLock = channel.lock();
+            try {
+                Entry<K, V> entry = new Entry<>(key, value);
                 oos.writeObject(entry);
-                // Todo check it
-                fileLock.release();
+                return serialized;
             } finally {
+                fileLock.release();
             }
         } catch (Exception e) {
             throw new StorageException(e.getMessage(), e);
         }
-        return serialized;
     }
 
     // Todo remove this invariant checks after testing?
