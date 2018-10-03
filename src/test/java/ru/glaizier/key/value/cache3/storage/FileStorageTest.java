@@ -5,9 +5,12 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.*;
@@ -227,6 +230,23 @@ public class FileStorageTest {
         assertThat(collisionsStorage.get(key20), is(Optional.empty()));
         assertThat(collisionsStorage.getSize(), is(0));
         assertFalse(collisionsStorage.contains(key20));
+    }
+
+    @Test
+    public void buildContents() {
+        // Files that don't stick to FileName pattern or can't be deserialized won't appear in contents
+        IntStream.rangeClosed(1, 2).forEach(i -> {
+            try {
+                temporaryFolder.newFile(UUID.randomUUID().toString() + ".ser");
+                temporaryFolder.newFile(i + "#" + UUID.randomUUID().toString() + ".ser");
+            } catch (IOException e) {
+                throw new RuntimeException(e.getMessage(), e);
+            }
+        });
+
+        Storage<Integer, String> localStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+
+        assertTrue(localStorage.isEmpty());
     }
 
 }
