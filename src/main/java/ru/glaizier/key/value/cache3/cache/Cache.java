@@ -1,6 +1,6 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import ru.glaizier.key.value.cache3.storage.RestrictedMap;
+import ru.glaizier.key.value.cache3.storage.RestrictedStorage;
 
 import java.util.Map;
 import java.util.Optional;
@@ -10,7 +10,7 @@ import javax.annotation.Nonnull;
 /**
  * @author GlaIZier
  */
-public interface Cache<K, V> extends RestrictedMap<K, V> {
+public interface Cache<K, V> extends RestrictedStorage<K, V> {
 
     /**
      * Put the element to the cache and get evicted element if exists

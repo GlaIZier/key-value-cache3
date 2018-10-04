@@ -124,7 +124,6 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
         Objects.requireNonNull(key, "key");
 
         // double check-lock
-        // Todo introduce the common method for double-check lock
         return ofNullable(contents.get(key))
                 .flatMap(path -> {
                     Object lock = locks.get(key);
@@ -209,7 +208,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     // Not thread-safe. Call with proper sync if needed
     private void remove(K key, Path path) {
-        // remove from disk
+        // remove from a disk
         // Todo introduce file lock check and hold
         wrap(Files::deleteIfExists, StorageException.class).apply(path);
         // remove from contents and locks

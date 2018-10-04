@@ -7,16 +7,16 @@ import javax.annotation.Nonnull;
 /**
  * @author GlaIZier
  */
-public interface RestrictedMap<K, V> {
+public interface RestrictedStorage<K, V> {
 
-    Optional<V> get(@Nonnull K key);
+    Optional<V> get(@Nonnull K key) throws StorageException;
 
     /**
      * @return removed value or empty if the key was not found.
      */
-    Optional<V> remove(@Nonnull K key);
+    Optional<V> remove(@Nonnull K key) throws StorageException;
 
-    boolean contains(@Nonnull K key);
+    boolean contains(@Nonnull K key) throws StorageException;
 
     /**
      * @return current number of elements
