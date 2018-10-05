@@ -109,13 +109,16 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
         Object lock = locks.computeIfAbsent(key, k -> new Object());
         synchronized (lock) {
-            // Todo possible deadlock?
-            Optional<V> prevValue = get(key);
+            Optional<V> prevValueOpt = ofNullable(contents.get(key))
+                .map(prevPath -> {
+                    V prevValue = deserialize(prevPath).value;
+                    wrap(Files::deleteIfExists, StorageException.class).apply(prevPath);
+                    return prevValue;
+                });
             // Todo introduce file lock check and hold
-            ofNullable(contents.get(key)).ifPresent(prevPath -> wrap(Files::deleteIfExists, StorageException.class).apply(prevPath));
             Path newPath = serialize(key, value);
             contents.put(key, newPath);
-            return prevValue;
+            return prevValueOpt;
         }
     }
 
@@ -150,12 +153,15 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
         return contents.size();
     }
 
-    // Not thread-safe. Call with proper sync if needed
+    /**
+     * Not thread-safe. Call with proper sync if needed
+     * @throws StorageException in all cases including one when a file doesn't exist
+     */
     @SuppressWarnings("unchecked")
-    private Entry<K, V> deserialize(Path path) {
+    private Entry<K, V> deserialize(Path path) throws StorageException {
         try (FileChannel channel = FileChannel.open(path);
              ObjectInputStream ois = new ObjectInputStream(Channels.newInputStream(channel))) {
-            // create a shared lock to let other processes to read too
+            // create a shared lock to let other processes reading too
             FileLock fileLock = channel.lock(0L, Long.MAX_VALUE, true);
             try {
                 return (Entry) ois.readObject();
@@ -168,7 +174,9 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     }
 
 
-    // Not thread-safe. Call with proper sync if needed
+    /**
+     * Not thread-safe. Call with proper sync if needed
+     */
     private Path serialize(K key, V value) {
         Path serialized = ofNullable(contents.get(key))
             .orElseGet(() -> {
