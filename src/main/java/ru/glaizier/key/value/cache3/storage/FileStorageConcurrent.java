@@ -30,6 +30,7 @@ import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 // Todo create a single thread executor alternative to deal with io?
 // Todo @GuardedBy
 @ThreadSafe
+// We don't use local locks for locking. Objects in the heap (locks map) are used to introduce flexible locking
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
 public class FileStorageConcurrent<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
@@ -44,6 +45,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     private final ConcurrentMap<K, Path> contents;
 
+    // Todo use K as locks?
     private final ConcurrentMap<K, Object> locks;
 
     private final Path folder;
@@ -115,7 +117,6 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
                     wrap(Files::deleteIfExists, StorageException.class).apply(prevPath);
                     return prevValue;
                 });
-            // Todo introduce file lock check and hold
             Path newPath = serialize(key, value);
             contents.put(key, newPath);
             return prevValueOpt;
@@ -217,7 +218,8 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     // Not thread-safe. Call with proper sync if needed
     private void remove(K key, Path path) {
         // remove from a disk
-        // Todo introduce file lock check and hold
+        // introduce some repeat logic in case of unsuccessful removal (eg some other process is using the file)?
+        // Or rename it randomly before removal to restrict other process to touch it?
         wrap(Files::deleteIfExists, StorageException.class).apply(path);
         // remove from contents and locks
         contents.remove(key);
