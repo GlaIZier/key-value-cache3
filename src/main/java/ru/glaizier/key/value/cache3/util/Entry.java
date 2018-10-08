@@ -1,8 +1,10 @@
 package ru.glaizier.key.value.cache3.util;
 
 import java.io.Serializable;
+import java.util.Objects;
 
-import jdk.nashorn.internal.ir.annotations.Immutable;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.Immutable;
 
 @Immutable
 public class Entry<K, V> implements Serializable {
@@ -10,7 +12,9 @@ public class Entry<K, V> implements Serializable {
 
     public final K key;
     public final V value;
-    public Entry(K key, V value) {
+    public Entry(@Nonnull K key, @Nonnull V value) {
+        Objects.requireNonNull(key);
+        Objects.requireNonNull(value);
         this.key = key;
         this.value = value;
     }
