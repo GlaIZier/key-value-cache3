@@ -1,0 +1,11 @@
+language: java
+jdk: oraclejdk8
+script:
+  - export _JAVA_OPTIONS="-Xms2048m -Xmx4096m"
+  - mvn clean verify
+notifications:
+  email:
+    recipients:
+      - kh.mv@bk.ru
+    on_success: never
+    on_failure: always
