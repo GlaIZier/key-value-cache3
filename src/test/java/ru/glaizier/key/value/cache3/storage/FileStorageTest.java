@@ -24,6 +24,7 @@ public class FileStorageTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private Storage<Integer, String> storage;
+
     private Storage<HashCodeEqualsPojo, String> collisionsStorage;
 
     private static class HashCodeEqualsPojo implements Serializable {

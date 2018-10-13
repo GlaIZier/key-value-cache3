@@ -1,28 +1,38 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.IntStream;
-
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
+
+import static java.util.stream.Collectors.toList;
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.*;
 
 /**
  * @author GlaIZier
  */
 public class FileStorageConcurrencyTest {
 
+    private static final int THREADS_NUMBER = 10;
+
+    private static final int TASKS_NUMBER = 10;
+
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+    private static ExecutorService executorService = Executors.newFixedThreadPool(THREADS_NUMBER);
 
     private Storage<Integer, String> storage;
     private Storage<HashCodeEqualsPojo, String> collisionsStorage;
@@ -67,53 +77,29 @@ public class FileStorageConcurrencyTest {
         collisionsStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
     }
 
-    /*
-    @Test
-    public void createContents() throws IOException {
-        IntStream.rangeClosed(1, 2).forEach(i -> {
-            try {
-                temporaryFolder.newFile(format(FileStorageConcurrent.FILENAME_FORMAT, i, 0));
-                temporaryFolder.newFile(format(FileStorageConcurrent.FILENAME_FORMAT, i, 1));
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage(), e);
-            }
-        });
-        temporaryFolder.newFile("somefile.ser");
-        Map<Integer, List<Path>> contents = FileStorageConcurrent(temporaryFolder.getRoot().toPath());
-
-        assertThat(contents.size(), is(2));
-        assertThat(contents.get(1).size(), is(2));
-        assertThat(contents.get(1).get(0).toString(), not(isEmptyOrNullString()));
-        assertThat(contents.get(1).get(1).toString(), not(isEmptyOrNullString()));
-        assertThat(contents.get(2).size(), is(2));
-        assertThat(contents.get(2).get(0).toString(), not(isEmptyOrNullString()));
-        assertThat(contents.get(2).get(1).toString(), not(isEmptyOrNullString()));
+    private List<Callable<Object>> buildPushTasks() {
+        return IntStream.range(0, THREADS_NUMBER)
+                .mapToObj(threadI -> (Runnable) () ->
+                        IntStream.range(0, TASKS_NUMBER)
+                                .forEach(taskI -> {
+                                    Thread.yield();
+                                    try {
+                                        Thread.sleep((long) (Math.random() * 100));
+                                    } catch (InterruptedException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                    storage.put(threadI, String.valueOf(threadI * THREADS_NUMBER + taskI));
+                                })
+                )
+                .map(Executors::callable)
+                .collect(toList());
     }
 
     @Test
-    public void createContentsWhenFolderEmpty() throws IOException {
-        Map<Integer, List<Path>> contents = FileStorage.createContents(temporaryFolder.getRoot().toPath());
-        assertTrue(contents.isEmpty());
-    }
-    */
-
-
-    @Test
-    public void put() {
-        storage.put(1, "1");
-        storage.put(2, "2");
-
-        assertThat(storage.getSize(), is(2));
-        assertTrue(storage.contains(1));
-        assertTrue(storage.contains(2));
-        assertFalse(storage.contains(3));
-
-        // put with the same key
-        storage.put(1, "3");
-        assertThat(storage.getSize(), is(2));
-        assertTrue(storage.contains(1));
-        assertTrue(storage.contains(2));
-        assertFalse(storage.contains(3));
+    public void put() throws InterruptedException {
+        executorService.invokeAll(buildPushTasks());
+//        assertThat(storage.getSize(), is(THREADS_NUMBER * TASKS_NUMBER));
+        assertThat(storage.getSize(), is(THREADS_NUMBER));
     }
 
     @Test
