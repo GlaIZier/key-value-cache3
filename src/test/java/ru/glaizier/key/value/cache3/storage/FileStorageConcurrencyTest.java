@@ -77,8 +77,9 @@ public class FileStorageConcurrencyTest {
         collisionsStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
     }
 
-    private List<Callable<Object>> buildPushTasks() {
-        return IntStream.range(0, THREADS_NUMBER)
+    @Test
+    public void put() throws InterruptedException {
+        List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
                 .mapToObj(threadI -> (Runnable) () ->
                         IntStream.range(0, TASKS_NUMBER)
                                 .forEach(taskI -> {
@@ -93,11 +94,7 @@ public class FileStorageConcurrencyTest {
                 )
                 .map(Executors::callable)
                 .collect(toList());
-    }
-
-    @Test
-    public void put() throws InterruptedException {
-        executorService.invokeAll(buildPushTasks());
+        executorService.invokeAll(pushTasks);
 //        assertThat(storage.getSize(), is(THREADS_NUMBER * TASKS_NUMBER));
         assertThat(storage.getSize(), is(THREADS_NUMBER));
     }
