@@ -11,14 +11,22 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 
+import static java.lang.String.format;
+import static java.util.concurrent.TimeUnit.*;
 import static java.util.stream.Collectors.toList;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.*;
+
+import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 /**
  * @author GlaIZier
@@ -79,24 +87,29 @@ public class FileStorageConcurrencyTest {
 
     @Test
     public void put() throws InterruptedException {
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
                 .mapToObj(threadI -> (Runnable) () ->
-                        IntStream.range(0, TASKS_NUMBER)
-                                .forEach(taskI -> {
-                                    Thread.yield();
-                                    try {
-                                        Thread.sleep((long) (Math.random() * 100));
-                                    } catch (InterruptedException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                    storage.put(threadI, String.valueOf(threadI * THREADS_NUMBER + taskI));
-                                })
+                    IntStream.range(0, TASKS_NUMBER)
+                        .forEach(taskI -> {
+                            try {
+                                // start simultaneously every iteration
+                                barrier.await(1, SECONDS);
+                                Thread.sleep((long) (Math.random() * 10));
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                            Thread.yield();
+                            storage.put(taskI, format("Thread: %d. Task: %d", threadI, taskI));
+                        })
                 )
                 .map(Executors::callable)
                 .collect(toList());
         executorService.invokeAll(pushTasks);
-//        assertThat(storage.getSize(), is(THREADS_NUMBER * TASKS_NUMBER));
         assertThat(storage.getSize(), is(THREADS_NUMBER));
+        IntStream.range(0, TASKS_NUMBER)
+            .forEach(taskI -> assertThat("taskI: " + taskI, storage.contains(taskI), is(true)));
+
     }
 
     @Test
