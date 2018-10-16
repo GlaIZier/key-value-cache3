@@ -13,9 +13,12 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
@@ -23,7 +26,14 @@ import java.util.stream.IntStream;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.*;
 import static java.util.stream.Collectors.toList;
+
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.describedAs;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.*;
 
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
@@ -40,7 +50,7 @@ public class FileStorageConcurrencyTest {
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-    private static ExecutorService executorService = Executors.newFixedThreadPool(THREADS_NUMBER);
+    private static ExecutorService executorService = Executors.newCachedThreadPool();
 
     private Storage<Integer, String> storage;
     private Storage<HashCodeEqualsPojo, String> collisionsStorage;
@@ -85,8 +95,12 @@ public class FileStorageConcurrencyTest {
         collisionsStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
     }
 
-    @Test
-    public void put() throws InterruptedException {
+    @Test(timeout = 10_000)
+    // timeout in case of deadlocks
+    // put every element with taskI simultaneously using CyclicBarrier
+    public void put() throws InterruptedException, ExecutionException {
+        Storage<Integer, String> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
                 .mapToObj(threadI -> (Runnable) () ->
@@ -105,25 +119,65 @@ public class FileStorageConcurrencyTest {
                 )
                 .map(Executors::callable)
                 .collect(toList());
-        executorService.invokeAll(pushTasks);
+        List<Future<Object>> futures = executorService.invokeAll(pushTasks);
+
+        // check that there were no exceptions in futures
+        for (Future<Object> future : futures)
+            future.get();
         assertThat(storage.getSize(), is(THREADS_NUMBER));
         IntStream.range(0, TASKS_NUMBER)
             .forEach(taskI -> assertThat("taskI: " + taskI, storage.contains(taskI), is(true)));
-
     }
 
-    @Test
-    public void get() {
-        storage.put(1, "1");
-        storage.put(2, "2");
+    @Test(timeout = 10_000)
+    // timeout in case of deadlocks
+    // get() and put() simultaneously using latch
+    public void getPut() throws InterruptedException, ExecutionException {
+        Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        storage.put(0, -1);
 
-        assertThat(storage.get(1), is(Optional.of("1")));
-        assertThat(storage.get(2), is(Optional.of("2")));
-        assertThat(storage.get(3), is(Optional.empty()));
+        CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
+        List<Callable<Object>> getPushTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Callable<Object>) () -> {
+                latch.countDown();
+                try {
+                    // start simultaneously with all put() and get()
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                return storage.get(0).orElseThrow(IllegalStateException::new);
+            })
+            .collect(toList());
+        List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                latch.countDown();
+                try {
+                    // start simultaneously with all put() and get()
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                storage.put(0, threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        getPushTasks.addAll(pushTasks);
+        List<Future<Object>> futures = executorService.invokeAll(getPushTasks);
 
-        // put with the same key
-        storage.put(1, "3");
-        assertThat(storage.get(1), is(Optional.of("3")));
+        // check that there were no exceptions in futures
+        for (Future<Object> future : futures)
+            future.get();
+        assertThat(storage.getSize(), is(1));
+        // First THREAD_NUMBER elements are Integers
+        for (int threadI = 0; threadI < THREADS_NUMBER; threadI++) {
+            assertThat("threadI: " + threadI, (Integer) futures.get(threadI).get(),
+                allOf(greaterThanOrEqualTo(-1), lessThan(THREADS_NUMBER)));
+        }
     }
 
     @Test
