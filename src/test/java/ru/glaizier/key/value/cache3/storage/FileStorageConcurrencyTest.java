@@ -1,5 +1,6 @@
 package ru.glaizier.key.value.cache3.storage;
 
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -21,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static java.lang.String.format;
@@ -28,6 +30,7 @@ import static java.util.concurrent.TimeUnit.*;
 import static java.util.stream.Collectors.toList;
 
 import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.describedAs;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -47,12 +50,11 @@ public class FileStorageConcurrencyTest {
 
     private static final int TASKS_NUMBER = 10;
 
+    private static ExecutorService executorService = Executors.newCachedThreadPool();
+
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-    private static ExecutorService executorService = Executors.newCachedThreadPool();
-
-    private Storage<Integer, String> storage;
     private Storage<HashCodeEqualsPojo, String> collisionsStorage;
 
     private static class HashCodeEqualsPojo implements Serializable {
@@ -91,9 +93,16 @@ public class FileStorageConcurrencyTest {
 
     @Before
     public void init() {
-        storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
         collisionsStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
     }
+
+    @AfterClass
+    public static void cleanUpClass() throws InterruptedException {
+        executorService.shutdownNow();
+        if (!executorService.awaitTermination(1, SECONDS))
+            System.exit(0);
+    }
+
 
     @Test(timeout = 10_000)
     // timeout in case of deadlocks
@@ -130,14 +139,13 @@ public class FileStorageConcurrencyTest {
     }
 
     @Test(timeout = 10_000)
-    // timeout in case of deadlocks
     // get() and put() simultaneously using latch
     public void getPut() throws InterruptedException, ExecutionException {
         Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
         storage.put(0, -1);
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
-        List<Callable<Object>> getPushTasks = IntStream.range(0, THREADS_NUMBER)
+        List<Callable<Object>> getPutTasks = IntStream.range(0, THREADS_NUMBER)
             .mapToObj(threadI -> (Callable<Object>) () -> {
                 latch.countDown();
                 try {
@@ -166,12 +174,9 @@ public class FileStorageConcurrencyTest {
             })
             .map(Executors::callable)
             .collect(toList());
-        getPushTasks.addAll(pushTasks);
-        List<Future<Object>> futures = executorService.invokeAll(getPushTasks);
+        getPutTasks.addAll(pushTasks);
+        List<Future<Object>> futures = executorService.invokeAll(getPutTasks);
 
-        // check that there were no exceptions in futures
-        for (Future<Object> future : futures)
-            future.get();
         assertThat(storage.getSize(), is(1));
         // First THREAD_NUMBER elements are Integers
         for (int threadI = 0; threadI < THREADS_NUMBER; threadI++) {
@@ -180,26 +185,131 @@ public class FileStorageConcurrencyTest {
         }
     }
 
-    @Test
-    public void remove() {
-        storage.put(1, "1");
-        storage.put(2, "2");
+    @Test(timeout = 10_000)
+    // get() and remove() simultaneously using latch
+    public void getRemove() throws InterruptedException, ExecutionException {
+        Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        for (int i = 0; i < THREADS_NUMBER; i++) {
+            storage.put(i, i);
+        }
 
-        assertThat(storage.remove(1), is(Optional.of("1")));
-        assertThat(storage.get(1), is(Optional.empty()));
-        assertThat(storage.getSize(), is(1));
-        assertFalse(storage.contains(1));
+        CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
+        List<Callable<Object>> getRemoveTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Callable<Object>) () -> {
+                latch.countDown();
+                try {
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                return storage.get(threadI);
+            })
+            .collect(toList());
+        List<Callable<Object>> removeTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                latch.countDown();
+                try {
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                storage.remove(threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        getRemoveTasks.addAll(removeTasks);
+        List<Future<Object>> futures = executorService.invokeAll(getRemoveTasks);
 
-        assertThat(storage.remove(2), is(Optional.of("2")));
-        assertThat(storage.get(2), is(Optional.empty()));
-        assertThat(storage.getSize(), is(0));
-        assertFalse(storage.contains(2));
-
-        assertThat(storage.remove(2), is(Optional.empty()));
-        assertThat(storage.get(2), is(Optional.empty()));
-        assertThat(storage.getSize(), is(0));
-        assertFalse(storage.contains(2));
+        assertThat(storage.isEmpty(), is(true));
+        // First THREAD_NUMBER elements are Optional<Integer>
+        for (int threadI = 0; threadI < THREADS_NUMBER; threadI++) {
+            assertThat("threadI: " + threadI, futures.get(threadI).get(),
+                anyOf(is(Optional.of(threadI)), is(Optional.empty())));
+        }
     }
+
+    @Test(timeout = 10_000)
+    // get(), put and remove() simultaneously using latch
+    public void getPutRemove() throws InterruptedException, ExecutionException {
+        Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+
+        CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 3);
+        List<Callable<Object>> getPutRemoveTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Callable<Object>) () -> {
+                latch.countDown();
+                try {
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                return storage.get(threadI);
+            })
+            .collect(toList());
+        List<Callable<Object>> putTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                latch.countDown();
+                try {
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                storage.put(threadI, threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        List<Callable<Object>> removeTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                latch.countDown();
+                try {
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                storage.remove(threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        getPutRemoveTasks.addAll(putTasks);
+        getPutRemoveTasks.addAll(removeTasks);
+        List<Future<Object>> futures = executorService.invokeAll(getPutRemoveTasks);
+
+        // check that values are either absent, either equal to threadI
+        assertThat(storage.getSize(), allOf(greaterThanOrEqualTo(0), lessThanOrEqualTo(THREADS_NUMBER)));
+        // First THREAD_NUMBER elements are Optional<Integer>
+        for (int threadI = 0; threadI < THREADS_NUMBER; threadI++) {
+            System.out.println(futures.get(threadI).get());
+            assertThat("threadI: " + threadI, futures.get(threadI).get(),
+                anyOf(is(Optional.of(threadI)), is(Optional.empty())));
+        }
+
+        List<Callable<Optional<Integer>>> getTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Callable<Optional<Integer>>) () -> {
+                try {
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                return storage.get(threadI);
+            })
+            .collect(toList());
+        List<Future<Optional<Integer>>> getFutures = executorService.invokeAll(getTasks);
+        AtomicInteger countPresent = new AtomicInteger();
+        for (int threadI = 0; threadI < THREADS_NUMBER; threadI++)
+            getFutures.get(threadI).get().ifPresent(v -> countPresent.incrementAndGet());
+        assertThat(storage.getSize(), is(countPresent.get()));
+    }
+
 
     @Test
     public void putWithCollisions() {
