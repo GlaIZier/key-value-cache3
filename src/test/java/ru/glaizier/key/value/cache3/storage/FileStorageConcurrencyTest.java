@@ -31,6 +31,7 @@ import org.junit.rules.TemporaryFolder;
 /**
  * @author GlaIZier
  */
+// Todo introduce performance test for the use case with lots of locks and without
 public class FileStorageConcurrencyTest {
 
     private static final int THREADS_NUMBER = 10;

@@ -1,12 +1,13 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -22,20 +23,29 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.util.Entry;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
 // Todo @GuardedBy
+
+/**
+ * Objects in the heap (locks map) are used to introduce flexible (partial) locking. We could introduce even more
+ * flexibility by using ReadWriteLock but it's not worth it for now.
+ */
 @ThreadSafe
-// We don't use local locks for locking. Objects in the heap (locks map) are used to introduce flexible locking
+// We don't use local locks for locking (we use locks in the heap)
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
 public class FileStorageConcurrent<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     // filename format: <keyHash>-<uuid>.ser
-    final static String FILENAME_FORMAT = "%d#%s.ser";
+    private final static String FILENAME_FORMAT = "%d#%s.ser";
 
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -45,7 +55,6 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
 
     private final ConcurrentMap<K, Path> contents;
 
-    // Todo use K as locks?
     private final ConcurrentMap<K, Object> locks;
 
     private final Path folder;
@@ -105,6 +114,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     }
 
     @Override
+    // Todo deal with invariants in case of exceptions
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
@@ -201,7 +211,6 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
         }
     }
 
-    // Todo remove this invariant checks after testing?
     // Not thread-safe. Call with proper sync if needed
     private void validateInvariant(K key) {
         Path path = contents.get(key);
