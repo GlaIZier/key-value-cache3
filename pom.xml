@@ -39,7 +39,6 @@
                 <!--</executions>-->
             <!--</plugin>-->
             <!-- Todo Add surefire plugin -->
-            <!-- Todo add travis integration -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
