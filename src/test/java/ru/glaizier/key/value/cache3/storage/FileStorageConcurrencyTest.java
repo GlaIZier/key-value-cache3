@@ -88,7 +88,7 @@ public class FileStorageConcurrencyTest {
     // timeout in case of deadlocks
     // put every element with taskI simultaneously using CyclicBarrier
     public void put() throws InterruptedException, ExecutionException {
-        Storage<Integer, String> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, String> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
 
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
@@ -121,7 +121,7 @@ public class FileStorageConcurrencyTest {
     @Test(timeout = 10_000)
     // get() and put() simultaneously using latch
     public void getPut() throws InterruptedException, ExecutionException {
-        Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
         storage.put(0, -1);
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
@@ -168,7 +168,7 @@ public class FileStorageConcurrencyTest {
     @Test(timeout = 10_000)
     // get() and remove() simultaneously using latch
     public void getRemove() throws InterruptedException, ExecutionException {
-        Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
         for (int i = 0; i < THREADS_NUMBER; i++) {
             storage.put(i, i);
         }
@@ -215,7 +215,7 @@ public class FileStorageConcurrencyTest {
     @Test(timeout = 10_000)
     // get(), put and remove() simultaneously using latch
     public void getPutRemove() throws InterruptedException, ExecutionException {
-        Storage<Integer, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 3);
         List<Callable<Object>> getPutRemoveTasks = IntStream.range(0, THREADS_NUMBER)
@@ -292,7 +292,7 @@ public class FileStorageConcurrencyTest {
     // timeout in case of deadlocks
     // put every element with taskI simultaneously using CyclicBarrier
     public void putWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, String> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, String> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
 
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
@@ -325,7 +325,7 @@ public class FileStorageConcurrencyTest {
     @Test(timeout = 10_000)
     // get() and put() simultaneously using latch
     public void getPutWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
         storage.put(new HashCodeEqualsPojo(0, 0), -1);
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
@@ -372,7 +372,7 @@ public class FileStorageConcurrencyTest {
     @Test(timeout = 10_000)
     // get() and remove() simultaneously using latch
     public void getRemoveWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
         for (int i = 0; i < THREADS_NUMBER; i++) {
             storage.put(new HashCodeEqualsPojo(0, i), i);
         }
@@ -419,7 +419,7 @@ public class FileStorageConcurrencyTest {
     @Test(timeout = 10_000)
     // get(), put and remove() simultaneously using latch
     public void getPutRemoveWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, Integer> storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 3);
         List<Callable<Object>> getPutRemoveTasks = IntStream.range(0, THREADS_NUMBER)

@@ -1,13 +1,13 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -23,9 +23,14 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.util.Entry;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -36,7 +41,7 @@ import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 @ThreadSafe
 // We don't use local locks for locking (we use locks in the heap)
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
-public class FileStorageConcurrent<K extends Serializable, V extends Serializable> implements Storage<K, V> {
+public class ConcurrentFileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     // filename format: <keyHash>-<uuid>.ser
     private final static String FILENAME_FORMAT = "%d#%s.ser";
@@ -54,11 +59,11 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     @GuardedBy("locks")
     private final Path folder;
 
-    public FileStorageConcurrent() {
+    public ConcurrentFileStorage() {
         this(TEMP_FOLDER);
     }
 
-    public FileStorageConcurrent(Path folder) {
+    public ConcurrentFileStorage(Path folder) {
         Objects.requireNonNull(folder, "folder");
         this.folder = folder;
         try {
@@ -109,7 +114,7 @@ public class FileStorageConcurrent<K extends Serializable, V extends Serializabl
     }
 
     @Override
-    // Todo deal with invariants in case of exceptions
+    // Todo deal with invariants in case of exceptions. Introduce new Invariant class?
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");

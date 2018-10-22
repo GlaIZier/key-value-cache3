@@ -1,10 +1,5 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Objects;
@@ -13,7 +8,13 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 /**
  * @author GlaIZier
@@ -63,8 +64,8 @@ public class FileStorageTest {
 
     @Before
     public void init() {
-        storage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
-        collisionsStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        collisionsStorage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
     }
 
     /*
@@ -72,14 +73,14 @@ public class FileStorageTest {
     public void createContents() throws IOException {
         IntStream.rangeClosed(1, 2).forEach(i -> {
             try {
-                temporaryFolder.newFile(format(FileStorageConcurrent.FILENAME_FORMAT, i, 0));
-                temporaryFolder.newFile(format(FileStorageConcurrent.FILENAME_FORMAT, i, 1));
+                temporaryFolder.newFile(format(ConcurrentFileStorage.FILENAME_FORMAT, i, 0));
+                temporaryFolder.newFile(format(ConcurrentFileStorage.FILENAME_FORMAT, i, 1));
             } catch (IOException e) {
                 throw new RuntimeException(e.getMessage(), e);
             }
         });
         temporaryFolder.newFile("somefile.ser");
-        Map<Integer, List<Path>> contents = FileStorageConcurrent(temporaryFolder.getRoot().toPath());
+        Map<Integer, List<Path>> contents = ConcurrentFileStorage(temporaryFolder.getRoot().toPath());
 
         assertThat(contents.size(), is(2));
         assertThat(contents.get(1).size(), is(2));
@@ -245,7 +246,7 @@ public class FileStorageTest {
             }
         });
 
-        Storage<Integer, String> localStorage = new FileStorageConcurrent<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, String> localStorage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
 
         assertTrue(localStorage.isEmpty());
     }
