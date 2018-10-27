@@ -1,13 +1,13 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ru.glaizier.key.value.cache3.util.Entry;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -23,14 +23,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import ru.glaizier.key.value.cache3.util.Entry;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -54,10 +49,55 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
 
     private final ConcurrentMap<K, Path> contents;
 
+    // Todo come up with idea how to remove something from it
     private final ConcurrentMap<K, Object> locks;
+
+    private final Transactional transactional = new Transactional();
 
     @GuardedBy("locks")
     private final Path folder;
+
+    /**
+     * @throws StorageException in all cases including one when a file doesn't exist
+     */
+    @SuppressWarnings("unchecked")
+    private Entry<K, V> deserialize(Path path) throws StorageException {
+        try (FileChannel channel = FileChannel.open(path);
+             ObjectInputStream ois = new ObjectInputStream(Channels.newInputStream(channel))) {
+            // create a shared lock to let other processes reading too
+            FileLock fileLock = channel.lock(0L, Long.MAX_VALUE, true);
+            try {
+                return (Entry) ois.readObject();
+            } finally {
+                fileLock.release();
+            }
+        } catch (Exception e) {
+            throw new StorageException(e.getMessage(), e);
+        }
+    }
+
+    private Path serialize(K key, V value) {
+        Path serialized = ofNullable(contents.get(key))
+                .orElseGet(() -> {
+                    String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
+                    return folder.resolve(filename);
+                });
+        try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
+             FileChannel channel = fos.getChannel();
+             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
+            // exclusive lock access to the file by OS
+            FileLock fileLock = channel.lock();
+            try {
+                Entry<K, V> entry = new Entry<>(key, value);
+                oos.writeObject(entry);
+                return serialized;
+            } finally {
+                fileLock.release();
+            }
+        } catch (Exception e) {
+            throw new StorageException(e.getMessage(), e);
+        }
+    }
 
     public ConcurrentFileStorage() {
         this(TEMP_FOLDER);
@@ -103,33 +143,23 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
 
         // double check-lock
         return ofNullable(contents.get(key))
-            .flatMap(path -> {
-                Object lock = locks.get(key);
-                synchronized (lock) {
-                    validateInvariant(key);
-                    return ofNullable(contents.get(key))
-                        .map(lockedPath -> deserialize(lockedPath).value);
-                }
-            });
+                .flatMap(path -> {
+                    Object lock = locks.get(key);
+                    synchronized (lock) {
+                        return transactional.get(key);
+                    }
+                });
     }
 
     @Override
-    // Todo deal with invariants in case of exceptions. Introduce new Invariant class?
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
 
+        // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
         Object lock = locks.computeIfAbsent(key, k -> new Object());
         synchronized (lock) {
-            Optional<V> prevValueOpt = ofNullable(contents.get(key))
-                .map(prevPath -> {
-                    V prevValue = deserialize(prevPath).value;
-                    wrap(Files::deleteIfExists, StorageException.class).apply(prevPath);
-                    return prevValue;
-                });
-            Path newPath = serialize(key, value);
-            contents.put(key, newPath);
-            return prevValueOpt;
+            return transactional.put(key, value);
         }
     }
 
@@ -142,13 +172,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                 .flatMap(path -> {
                     Object lock = locks.get(key);
                     synchronized (lock) {
-                        validateInvariant(key);
-                        return ofNullable(contents.get(key))
-                                .map(lockedPath -> {
-                                    V removedValue = deserialize(lockedPath).value;
-                                    remove(key, lockedPath);
-                                    return removedValue;
-                                });
+                        return transactional.remove(key);
                     }
                 });
     }
@@ -164,76 +188,74 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         return contents.size();
     }
 
-    /**
-     * Not thread-safe. Call with proper sync if needed
-     * @throws StorageException in all cases including one when a file doesn't exist
-     */
-    @SuppressWarnings("unchecked")
-    private Entry<K, V> deserialize(Path path) throws StorageException {
-        try (FileChannel channel = FileChannel.open(path);
-             ObjectInputStream ois = new ObjectInputStream(Channels.newInputStream(channel))) {
-            // create a shared lock to let other processes reading too
-            FileLock fileLock = channel.lock(0L, Long.MAX_VALUE, true);
-            try {
-                return (Entry) ois.readObject();
-            } finally {
-                fileLock.release();
-            }
-        } catch (Exception e) {
-            throw new StorageException(e.getMessage(), e);
+    // Not thread-safe. Call with proper sync
+    // Todo deal with exceptions.
+    // Todo Come up with architecure and approach of transactions
+    private class Transactional {
+
+        // doesn't change anything. No need to cope with invariants.
+        private Optional<V> get(@Nonnull K key) {
+            return ofNullable(contents.get(key))
+                    .map(lockedPath -> deserialize(lockedPath).value);
         }
-    }
 
-
-    /**
-     * Not thread-safe. Call with proper sync if needed
-     */
-    private Path serialize(K key, V value) {
-        Path serialized = ofNullable(contents.get(key))
-            .orElseGet(() -> {
-                String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
-                return folder.resolve(filename);
-            });
-        try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
-             FileChannel channel = fos.getChannel();
-             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
-            // exclusive lock access to the file by OS
-            FileLock fileLock = channel.lock();
-            try {
-                Entry<K, V> entry = new Entry<>(key, value);
-                oos.writeObject(entry);
-                return serialized;
-            } finally {
-                fileLock.release();
-            }
-        } catch (Exception e) {
-            throw new StorageException(e.getMessage(), e);
+        private Optional<V> put(@Nonnull K key, @Nonnull V value) {
+            Optional<V> prevValueOpt = ofNullable(contents.get(key))
+                    .map(prevPath -> {
+                        V prevValue = deserialize(prevPath).value;
+                        try {
+                            wrap(Files::deleteIfExists, StorageException.class).apply(prevPath);
+                        } catch (StorageException e) {
+                            contents.remove(key);
+                            throw e;
+                        }
+                        return prevValue;
+                    });
+            Path newPath = serialize(key, value);
+            contents.put(key, newPath);
+            validateInvariant(key);
+            return prevValueOpt;
         }
-    }
 
-    // Not thread-safe. Call with proper sync if needed
-    private void validateInvariant(K key) {
-        Path path = contents.get(key);
-        Object lock = locks.get(key);
-        boolean fileExists = path != null && Files.exists(path);
-        if ((path == null && lock == null) ||
-            (path != null && lock != null && fileExists))
-            return;
+        private Optional<V> remove(@Nonnull K key) {
+            return ofNullable(contents.get(key))
+                    .map(lockedPath -> {
+                        V removedValue = deserialize(lockedPath).value;
+                        remove(key, lockedPath);
+                        validateInvariant(key);
+                        return removedValue;
+                    });
+        }
 
-        throw new IllegalStateException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
-            path, lock, fileExists));
-    }
+        // Not thread-safe. Call with proper sync if needed
+        private void validateInvariant(K key) {
+            Path path = contents.get(key);
+            Object lock = locks.get(key);
+            boolean fileExists = path != null && Files.exists(path);
+            if ((path == null) ||
+                    (lock != null && fileExists))
+                return;
 
-    // Not thread-safe. Call with proper sync if needed
-    private void remove(K key, Path path) {
-        // remove from a disk
-        // introduce some repeat logic in case of unsuccessful removal (eg some other process is using the file)?
-        // Or rename it randomly before removal to restrict other process to touch it?
-        wrap(Files::deleteIfExists, StorageException.class).apply(path);
-        // remove from contents and locks
-        contents.remove(key);
-        // remove from locks
-        locks.remove(key);
+            throw new IllegalStateException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
+                    path, lock, fileExists));
+        }
+
+        // Not thread-safe. Call with proper sync if needed
+        private V remove(K key, Path path) {
+            V prevValue = deserialize(path).value;
+            boolean prevFileRemoved = false;
+            try {
+                // introduce some repeat logic in case of unsuccessful removal (eg some other process is using the file)?
+                // Or rename it randomly before removal to restrict other process to touch it?
+                prevFileRemoved = wrap(Files::deleteIfExists, StorageException.class).apply(path);
+            } finally {
+                // Todo check file exists?
+                if (prevFileRemoved)
+                    contents.remove(key);
+            }
+            return prevValue;
+        }
+
     }
 
 }
