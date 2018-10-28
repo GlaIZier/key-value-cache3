@@ -1,7 +1,10 @@
-package ru.glaizier.key.value.cache3.storage;
+package ru.glaizier.key.value.cache3.storage.file;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.exception.InconsistentStorageException;
+import ru.glaizier.key.value.cache3.storage.exception.StorageException;
 import ru.glaizier.key.value.cache3.util.Entry;
 
 import javax.annotation.Nonnull;
@@ -188,9 +191,14 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         return contents.size();
     }
 
-    // Not thread-safe. Call with proper sync
+    /**
+     * Not thread-safe. Call with proper sync.
+     * In case of any exceptions, it tries to make contests and files consistent(either both are present, either not)
+     * and rethrows exception.
+     * If it failed to restore consistency, it throws InconsistentStorageException
+     */
     // Todo deal with exceptions.
-    // Todo Come up with architecure and approach of transactions
+    // Todo Come up with architecture and approach of transactions
     private class Transactional {
 
         // doesn't change anything. No need to cope with invariants.
@@ -205,8 +213,13 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                         V prevValue = deserialize(prevPath).value;
                         try {
                             wrap(Files::deleteIfExists, StorageException.class).apply(prevPath);
-                        } catch (StorageException e) {
-                            contents.remove(key);
+                        } catch (Throwable e) {
+                            try {
+                                contents.remove(key);
+                            } catch (Throwable auxiliaryE) {
+                                throw new InconsistentStorageException("Failed to remove previous value in contests",
+                                        e, auxiliaryE);
+                            }
                             throw e;
                         }
                         return prevValue;

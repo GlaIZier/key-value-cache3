@@ -1,4 +1,10 @@
-package ru.glaizier.key.value.cache3.storage;
+package ru.glaizier.key.value.cache3.storage.file;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+import ru.glaizier.key.value.cache3.storage.Storage;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -8,13 +14,7 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import static org.junit.Assert.*;
 
 /**
  * @author GlaIZier

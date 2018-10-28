@@ -1,8 +1,9 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import java.util.Optional;
+import ru.glaizier.key.value.cache3.storage.exception.StorageException;
 
 import javax.annotation.Nonnull;
+import java.util.Optional;
 
 /**
  * Interface for a key-value storage

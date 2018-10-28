@@ -1,4 +1,6 @@
-package ru.glaizier.key.value.cache3.storage;
+package ru.glaizier.key.value.cache3.storage.memory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
 
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
