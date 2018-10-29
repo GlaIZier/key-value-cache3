@@ -1,16 +1,13 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.exception.InconsistentStorageException;
-import ru.glaizier.key.value.cache3.storage.exception.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -26,9 +23,17 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.exception.InconsistentStorageException;
+import ru.glaizier.key.value.cache3.storage.exception.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -60,47 +65,6 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     @GuardedBy("locks")
     private final Path folder;
 
-    /**
-     * @throws StorageException in all cases including one when a file doesn't exist
-     */
-    @SuppressWarnings("unchecked")
-    private Entry<K, V> deserialize(Path path) throws StorageException {
-        try (FileChannel channel = FileChannel.open(path);
-             ObjectInputStream ois = new ObjectInputStream(Channels.newInputStream(channel))) {
-            // create a shared lock to let other processes reading too
-            FileLock fileLock = channel.lock(0L, Long.MAX_VALUE, true);
-            try {
-                return (Entry) ois.readObject();
-            } finally {
-                fileLock.release();
-            }
-        } catch (Exception e) {
-            throw new StorageException(e.getMessage(), e);
-        }
-    }
-
-    private Path serialize(K key, V value) {
-        Path serialized = ofNullable(contents.get(key))
-                .orElseGet(() -> {
-                    String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
-                    return folder.resolve(filename);
-                });
-        try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
-             FileChannel channel = fos.getChannel();
-             ObjectOutputStream oos = new ObjectOutputStream(fos)) {
-            // exclusive lock access to the file by OS
-            FileLock fileLock = channel.lock();
-            try {
-                Entry<K, V> entry = new Entry<>(key, value);
-                oos.writeObject(entry);
-                return serialized;
-            } finally {
-                fileLock.release();
-            }
-        } catch (Exception e) {
-            throw new StorageException(e.getMessage(), e);
-        }
-    }
 
     public ConcurrentFileStorage() {
         this(TEMP_FOLDER);
@@ -126,14 +90,14 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                 .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
                 .map(path -> {
                     try {
-                        return new Entry<>(deserialize(path).key, path);
+                        return new Entry<>(transactional.deserialize(path).key, path);
                     } catch (Exception e) {
                         log.error("Couldn't deserialize key-value for the path: " + path, e);
                         return null;
                     }
                 })
                 .filter(Objects::nonNull)
-                .collect(toConcurrentMap(entry -> entry.key, entry -> entry.value));
+                .collect(toConcurrentMap(entry -> entry.key, entry -> entry.value, (one, another) -> one));
     }
 
     private ConcurrentMap<K, Object> buildLocks(Set<K> keys) throws IOException {
@@ -193,9 +157,10 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
 
     /**
      * Not thread-safe. Call with proper sync.
-     * In case of any exceptions, it tries to make contests and files consistent(either both are present, either not)
-     * and rethrows exception.
-     * If it failed to restore consistency, it throws InconsistentStorageException
+     * In case of exceptions:
+     * If consistency wasn't violated, StorageException is thrown to indicate that you can try one again.
+     * Otherwise, InconsistentStorageException is thrown to indicate that you should take care of the inconsistent file
+     * manually.
      */
     // Todo deal with exceptions.
     // Todo Come up with architecture and approach of transactions
@@ -211,21 +176,20 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             Optional<V> prevValueOpt = ofNullable(contents.get(key))
                     .map(prevPath -> {
                         V prevValue = deserialize(prevPath).value;
-                        try {
-                            wrap(Files::deleteIfExists, StorageException.class).apply(prevPath);
-                        } catch (Throwable e) {
-                            try {
-                                contents.remove(key);
-                            } catch (Throwable auxiliaryE) {
-                                throw new InconsistentStorageException("Failed to remove previous value in contests",
-                                        e, auxiliaryE);
-                            }
-                            throw e;
-                        }
+                        removeFile(prevPath);
                         return prevValue;
                     });
             Path newPath = serialize(key, value);
-            contents.put(key, newPath);
+            try {
+                contents.put(key, newPath);
+            } catch (Throwable e) {
+                try {
+                    removeFile(newPath);
+                } catch (Throwable auxiliaryE) {
+                    throw new InconsistentStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
+                        e, auxiliaryE, newPath);
+                }
+            }
             validateInvariant(key);
             return prevValueOpt;
         }
@@ -240,6 +204,53 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                     });
         }
 
+        /**
+         * @throws StorageException in all cases including one when a file doesn't exist
+         */
+        @SuppressWarnings("unchecked")
+        private Entry<K, V> deserialize(Path path) throws StorageException {
+            try (FileChannel channel = FileChannel.open(path);
+                 ObjectInputStream ois = new ObjectInputStream(Channels.newInputStream(channel))) {
+                // create a shared lock to let other processes reading too
+                FileLock fileLock = channel.lock(0L, Long.MAX_VALUE, true);
+                try {
+                    return (Entry) ois.readObject();
+                } finally {
+                    fileLock.release();
+                }
+            } catch (Exception e) {
+                throw new StorageException(e.getMessage(), e);
+            }
+        }
+
+        private Path serialize(K key, V value) {
+            Path serialized = ofNullable(contents.get(key))
+                .orElseGet(() -> {
+                    String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
+                    return folder.resolve(filename);
+                });
+            boolean fileSaved = false;
+            try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
+                 FileChannel channel = fos.getChannel();
+                 ObjectOutputStream oos = new ObjectOutputStream(fos)) {
+                // exclusive lock access to the file by OS
+                FileLock fileLock = channel.lock();
+                try {
+                    Entry<K, V> entry = new Entry<>(key, value);
+                    oos.writeObject(entry);
+                    fileSaved = true;
+                    return serialized;
+                } finally {
+                    fileLock.release();
+                }
+            } catch (Exception e) {
+                if (fileSaved)
+                    throw new InconsistentStorageException(format("Couldn't release the lock for file %s", serialized), e, null, serialized);
+                else
+                    throw new StorageException(e.getMessage(), e);
+            }
+        }
+
         // Not thread-safe. Call with proper sync if needed
         private void validateInvariant(K key) {
             Path path = contents.get(key);
@@ -251,6 +262,10 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
 
             throw new IllegalStateException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
                     path, lock, fileExists));
+        }
+
+        private boolean removeFile(Path path) {
+            return wrap(Files::deleteIfExists, StorageException.class).apply(path);
         }
 
         // Not thread-safe. Call with proper sync if needed
