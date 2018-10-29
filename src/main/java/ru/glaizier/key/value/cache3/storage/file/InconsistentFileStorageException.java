@@ -1,33 +1,29 @@
-package ru.glaizier.key.value.cache3.storage.exception;
+package ru.glaizier.key.value.cache3.storage.file;
 
 import java.nio.file.Path;
 import java.util.Optional;
 
+import ru.glaizier.key.value.cache3.storage.StorageException;
+
 /**
  * @author GlaIZier
  */
-public class InconsistentStorageException extends StorageException {
+public class InconsistentFileStorageException extends StorageException {
 
     private final Throwable auxiliaryException;
 
     private final Path path;
 
-    public InconsistentStorageException(String message) {
-        super(message);
+    InconsistentFileStorageException(String message, Throwable cause, Path path) {
+        super(message, cause);
+        this.path = path;
         this.auxiliaryException = null;
-        this.path = null;
     }
 
-    public InconsistentStorageException(String message, Throwable cause) {
+    InconsistentFileStorageException(String message, Throwable cause, Path path, Throwable auxiliaryException) {
         super(message, cause);
-        this.auxiliaryException = null;
-        this.path = null;
-    }
-
-    public InconsistentStorageException(String message, Throwable cause, Throwable auxiliaryException, Path path) {
-        super(message, cause);
+        this.path = path;
         this.auxiliaryException = auxiliaryException;
-        this.path = null;
     }
 
     public Optional<Throwable> getAuxiliaryException() {

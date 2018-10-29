@@ -1,9 +1,8 @@
 package ru.glaizier.key.value.cache3.storage;
 
-import ru.glaizier.key.value.cache3.storage.exception.StorageException;
+import java.util.Optional;
 
 import javax.annotation.Nonnull;
-import java.util.Optional;
 
 /**
  * @author GlaIZier

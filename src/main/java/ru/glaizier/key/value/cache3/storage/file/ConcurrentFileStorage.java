@@ -31,8 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.exception.InconsistentStorageException;
-import ru.glaizier.key.value.cache3.storage.exception.StorageException;
+import ru.glaizier.key.value.cache3.storage.StorageException;
 import ru.glaizier.key.value.cache3.util.Entry;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
@@ -159,8 +158,8 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
      * Not thread-safe. Call with proper sync.
      * In case of exceptions:
      * If consistency wasn't violated, StorageException is thrown to indicate that you can try one again.
-     * Otherwise, InconsistentStorageException is thrown to indicate that you should take care of the inconsistent file
-     * manually.
+     * Otherwise, InconsistentFileStorageException is thrown to indicate that you should take care of the inconsistent file
+     * manually and try one more time.
      */
     // Todo deal with exceptions.
     // Todo Come up with architecture and approach of transactions
@@ -183,12 +182,8 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             try {
                 contents.put(key, newPath);
             } catch (Throwable e) {
-                try {
-                    removeFile(newPath);
-                } catch (Throwable auxiliaryE) {
-                    throw new InconsistentStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
-                        e, auxiliaryE, newPath);
-                }
+                throw new InconsistentFileStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
+                    e, newPath);
             }
             validateInvariant(key);
             return prevValueOpt;
@@ -245,7 +240,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                 }
             } catch (Exception e) {
                 if (fileSaved)
-                    throw new InconsistentStorageException(format("Couldn't release the lock for file %s", serialized), e, null, serialized);
+                    throw new InconsistentFileStorageException(format("Couldn't release the lock for the file %s", serialized), e, serialized);
                 else
                     throw new StorageException(e.getMessage(), e);
             }

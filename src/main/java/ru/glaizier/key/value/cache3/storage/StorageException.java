@@ -1,4 +1,4 @@
-package ru.glaizier.key.value.cache3.storage.exception;
+package ru.glaizier.key.value.cache3.storage;
 
 /**
  * @author GlaIZier
