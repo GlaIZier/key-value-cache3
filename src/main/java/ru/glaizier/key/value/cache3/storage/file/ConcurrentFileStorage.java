@@ -159,10 +159,8 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
      * In case of exceptions:
      * If consistency wasn't violated, StorageException is thrown to indicate that you can try one again.
      * Otherwise, InconsistentFileStorageException is thrown to indicate that you should take care of the inconsistent file
-     * manually and try one more time.
+     * manually, call remove() on this key again and try again.
      */
-    // Todo deal with exceptions.
-    // Todo Come up with architecture and approach of transactions
     private class Transactional {
 
         // doesn't change anything. No need to cope with invariants.
@@ -171,6 +169,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                     .map(lockedPath -> deserialize(lockedPath).value);
         }
 
+        // Todo try to rewrite a file with one operation if a path is the same for the same keys
         private Optional<V> put(@Nonnull K key, @Nonnull V value) {
             Optional<V> prevValueOpt = ofNullable(contents.get(key))
                     .map(prevPath -> {
@@ -181,7 +180,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             Path newPath = serialize(key, value);
             try {
                 contents.put(key, newPath);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 throw new InconsistentFileStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
                     e, newPath);
             }
@@ -192,8 +191,13 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         private Optional<V> remove(@Nonnull K key) {
             return ofNullable(contents.get(key))
                     .map(lockedPath -> {
+                        try {
+                            contents.remove(key);
+                        } catch (Exception e) {
+                            throw new StorageException(format("Couldn't remove key %s from the contests", key));
+                        }
                         V removedValue = deserialize(lockedPath).value;
-                        remove(key, lockedPath);
+                        removeFile(lockedPath);
                         validateInvariant(key);
                         return removedValue;
                     });
@@ -218,7 +222,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             }
         }
 
-        private Path serialize(K key, V value) {
+        private Path serialize(K key, V value) throws StorageException, InconsistentFileStorageException {
             Path serialized = ofNullable(contents.get(key))
                 .orElseGet(() -> {
                     String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
@@ -240,14 +244,14 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                 }
             } catch (Exception e) {
                 if (fileSaved)
-                    throw new InconsistentFileStorageException(format("Couldn't release the lock for the file %s", serialized), e, serialized);
+                    throw new InconsistentFileStorageException(format("Exception after file save has occurred %s", serialized), e, serialized);
                 else
                     throw new StorageException(e.getMessage(), e);
             }
         }
 
         // Not thread-safe. Call with proper sync if needed
-        private void validateInvariant(K key) {
+        private void validateInvariant(K key) throws InconsistentFileStorageException {
             Path path = contents.get(key);
             Object lock = locks.get(key);
             boolean fileExists = path != null && Files.exists(path);
@@ -255,28 +259,12 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                     (lock != null && fileExists))
                 return;
 
-            throw new IllegalStateException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
-                    path, lock, fileExists));
+            throw new InconsistentFileStorageException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
+                    path, lock, fileExists), path);
         }
 
-        private boolean removeFile(Path path) {
+        private boolean removeFile(Path path) throws StorageException {
             return wrap(Files::deleteIfExists, StorageException.class).apply(path);
-        }
-
-        // Not thread-safe. Call with proper sync if needed
-        private V remove(K key, Path path) {
-            V prevValue = deserialize(path).value;
-            boolean prevFileRemoved = false;
-            try {
-                // introduce some repeat logic in case of unsuccessful removal (eg some other process is using the file)?
-                // Or rename it randomly before removal to restrict other process to touch it?
-                prevFileRemoved = wrap(Files::deleteIfExists, StorageException.class).apply(path);
-            } finally {
-                // Todo check file exists?
-                if (prevFileRemoved)
-                    contents.remove(key);
-            }
-            return prevValue;
         }
 
     }
