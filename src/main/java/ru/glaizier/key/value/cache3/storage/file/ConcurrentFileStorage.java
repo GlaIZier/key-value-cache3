@@ -1,13 +1,15 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -23,16 +25,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -161,6 +156,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
      * Otherwise, InconsistentFileStorageException is thrown to indicate that you should take care of the inconsistent file
      * manually, call remove() on this key again and try again.
      */
+    // Todo move sync in Transactional
     private class Transactional {
 
         // doesn't change anything. No need to cope with invariants.
