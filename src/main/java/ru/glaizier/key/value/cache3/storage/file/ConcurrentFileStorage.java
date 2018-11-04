@@ -40,14 +40,14 @@ import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
 public class ConcurrentFileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
-    // filename format: <keyHash>-<uuid>.ser
-    private final static String FILENAME_FORMAT = "%d#%s.ser";
-
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final static Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache3");
+    // filename format: <keyHash>-<uuid>.ser
+    private static final String FILENAME_FORMAT = "%d#%s.ser";
 
-    private final static Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
+    private static final Path TEMP_FOLDER = Paths.get(System.getProperty("java.io.tmpdir")).resolve("key-value-cache3");
+
+    private static final Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
 
     private final ConcurrentMap<K, Path> contents;
 
@@ -101,41 +101,20 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     @Override
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
-
-        // double check-lock
-        return ofNullable(contents.get(key))
-                .flatMap(path -> {
-                    Object lock = locks.get(key);
-                    synchronized (lock) {
-                        return transactional.get(key);
-                    }
-                });
+        return transactional.get(key);
     }
 
     @Override
     public Optional<V> put(@Nonnull K key, @Nonnull V value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
-
-        // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
-        Object lock = locks.computeIfAbsent(key, k -> new Object());
-        synchronized (lock) {
-            return transactional.put(key, value);
-        }
+        return transactional.put(key, value);
     }
 
     @Override
     public Optional<V> remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
-
-        // double check-lock
-        return ofNullable(contents.get(key))
-                .flatMap(path -> {
-                    Object lock = locks.get(key);
-                    synchronized (lock) {
-                        return transactional.remove(key);
-                    }
-                });
+        return transactional.remove(key);
     }
 
     @Override
@@ -152,56 +131,71 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     /**
      * Not thread-safe. Call with proper sync.
      * In case of exceptions:
-     * If consistency wasn't violated, StorageException is thrown to indicate that you can try one again.
+     * If consistency wasn't violated, StorageException is thrown to indicate that you need to try one again.
      * Otherwise, InconsistentFileStorageException is thrown to indicate that you should take care of the inconsistent file
-     * manually, call remove() on this key again and try again.
+     * manually, call remove() on this key and try again.
      */
-    // Todo move sync in Transactional
     private class Transactional {
 
         // doesn't change anything. No need to cope with invariants.
         private Optional<V> get(@Nonnull K key) {
+            // double check-lock
             return ofNullable(contents.get(key))
-                    .map(lockedPath -> deserialize(lockedPath).value);
+                    .flatMap(unused -> {
+                        Object lock = locks.get(key);
+                        synchronized (lock) {
+                            return ofNullable(contents.get(key))
+                                    .map(lockedPath -> deserialize(lockedPath).value);
+                        }
+                    });
         }
 
         // Todo try to rewrite a file with one operation if a path is the same for the same keys
         private Optional<V> put(@Nonnull K key, @Nonnull V value) {
-            Optional<V> prevValueOpt = ofNullable(contents.get(key))
-                    .map(prevPath -> {
-                        V prevValue = deserialize(prevPath).value;
-                        removeFile(prevPath);
-                        return prevValue;
-                    });
-            Path newPath = serialize(key, value);
-            try {
-                contents.put(key, newPath);
-            } catch (Exception e) {
-                throw new InconsistentFileStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
-                    e, newPath);
+            // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
+            Object lock = locks.computeIfAbsent(key, k -> new Object());
+            synchronized (lock) {
+                Optional<V> prevValueOpt = ofNullable(contents.get(key))
+                        .map(prevPath -> {
+                            V prevValue = deserialize(prevPath).value;
+                            removeFile(prevPath);
+                            return prevValue;
+                        });
+                Path newPath = serialize(key, value);
+                try {
+                    contents.put(key, newPath);
+                } catch (Exception e) {
+                    throw new InconsistentFileStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
+                            e, newPath);
+                }
+                validateInvariant(key);
+                return prevValueOpt;
             }
-            validateInvariant(key);
-            return prevValueOpt;
         }
 
         private Optional<V> remove(@Nonnull K key) {
+            // double check-lock
             return ofNullable(contents.get(key))
-                    .map(lockedPath -> {
-                        try {
-                            contents.remove(key);
-                        } catch (Exception e) {
-                            throw new StorageException(format("Couldn't remove key %s from the contests", key));
+                    .flatMap(path -> {
+                        Object lock = locks.get(key);
+                        synchronized (lock) {
+                            return ofNullable(contents.get(key))
+                                    .map(lockedPath -> {
+                                        try {
+                                            contents.remove(key);
+                                        } catch (Exception e) {
+                                            throw new StorageException(format("Couldn't remove key %s from the contests", key));
+                                        }
+                                        V removedValue = deserialize(lockedPath).value;
+                                        removeFile(lockedPath);
+                                        validateInvariant(key);
+                                        return removedValue;
+                                    });
                         }
-                        V removedValue = deserialize(lockedPath).value;
-                        removeFile(lockedPath);
-                        validateInvariant(key);
-                        return removedValue;
                     });
         }
 
-        /**
-         * @throws StorageException in all cases including one when a file doesn't exist
-         */
+        // Not thread-safe. Call with proper sync if needed
         @SuppressWarnings("unchecked")
         private Entry<K, V> deserialize(Path path) throws StorageException {
             try (FileChannel channel = FileChannel.open(path);
@@ -218,12 +212,13 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             }
         }
 
+        // Not thread-safe. Call with proper sync if needed
         private Path serialize(K key, V value) throws StorageException, InconsistentFileStorageException {
             Path serialized = ofNullable(contents.get(key))
-                .orElseGet(() -> {
-                    String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
-                    return folder.resolve(filename);
-                });
+                    .orElseGet(() -> {
+                        String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
+                        return folder.resolve(filename);
+                    });
             boolean fileSaved = false;
             try (FileOutputStream fos = new FileOutputStream(serialized.toFile());
                  FileChannel channel = fos.getChannel();
@@ -259,6 +254,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                     path, lock, fileExists), path);
         }
 
+        // Not thread-safe. Call with proper sync if needed
         private boolean removeFile(Path path) throws StorageException {
             return wrap(Files::deleteIfExists, StorageException.class).apply(path);
         }
