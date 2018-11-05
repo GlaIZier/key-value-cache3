@@ -59,7 +59,6 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     @GuardedBy("locks")
     private final Path folder;
 
-
     public ConcurrentFileStorage() {
         this(TEMP_FOLDER);
     }
@@ -139,7 +138,8 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
 
         // doesn't change anything. No need to cope with invariants.
         private Optional<V> get(@Nonnull K key) {
-            // double check-lock
+            // Todo double-check lock is antipattern?
+            // double-checklock
             return ofNullable(contents.get(key))
                     .flatMap(unused -> {
                         Object lock = locks.get(key);
