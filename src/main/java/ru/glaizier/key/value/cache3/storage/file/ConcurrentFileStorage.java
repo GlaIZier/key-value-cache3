@@ -1,15 +1,13 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -25,9 +23,16 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -139,37 +144,41 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         // doesn't change anything. No need to cope with invariants.
         private Optional<V> get(@Nonnull K key) {
             // Todo double-check lock is antipattern?
-            // double-checklock
-            return ofNullable(contents.get(key))
-                    .flatMap(unused -> {
-                        Object lock = locks.get(key);
-                        synchronized (lock) {
-                            return ofNullable(contents.get(key))
-                                    .map(lockedPath -> deserialize(lockedPath).value);
-                        }
-                    });
+            // double-check lock
+            return ofNullable(locks.get(key))
+                .flatMap(lock -> {
+                    synchronized (lock) {
+                        return ofNullable(contents.get(key))
+                            .map(lockedPath -> deserialize(lockedPath).value);
+                    }
+                });
         }
 
         // Todo try to rewrite a file with one operation if a path is the same for the same keys
         private Optional<V> put(@Nonnull K key, @Nonnull V value) {
             // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
-            Object lock = locks.computeIfAbsent(key, k -> new Object());
-            synchronized (lock) {
-                Optional<V> prevValueOpt = ofNullable(contents.get(key))
+            // Todo introduce while logic in every method?
+            while (true) {
+                Object lock = locks.computeIfAbsent(key, k -> new Object());
+                synchronized (lock) {
+                    if (lock != locks.get(key))
+                        continue;
+                    Optional<V> prevValueOpt = ofNullable(contents.get(key))
                         .map(prevPath -> {
                             V prevValue = deserialize(prevPath).value;
                             removeFile(prevPath);
                             return prevValue;
                         });
-                Path newPath = serialize(key, value);
-                try {
-                    contents.put(key, newPath);
-                } catch (Exception e) {
-                    throw new InconsistentFileStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
+                    Path newPath = serialize(key, value);
+                    try {
+                        contents.put(key, newPath);
+                    } catch (Exception e) {
+                        throw new InconsistentFileStorageException(format("Failed to put path %s for the key %s in the contests", newPath, key),
                             e, newPath);
+                    }
+                    validateInvariant(key);
+                    return prevValueOpt;
                 }
-                validateInvariant(key);
-                return prevValueOpt;
             }
         }
 
