@@ -1,13 +1,15 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import static java.lang.String.format;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -23,16 +25,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
+import static java.lang.String.format;
+import static java.util.Optional.*;
+import static java.util.stream.Collectors.toConcurrentMap;
 import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
 
 // Todo create a single thread executor alternative to deal with io?
@@ -140,11 +135,24 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
      * manually, call remove() on this key and try again.
      */
     private class Transactional {
-
         // doesn't change anything. No need to cope with invariants.
         private Optional<V> get(@Nonnull K key) {
+            while (true) {
+                Object lock = locks.get(key);
+                if (lock == null)
+                    return empty();
+                synchronized (lock) {
+                    if (lock != locks.get(key))
+                        continue;
+                    // should always be not null since lock is not null
+                    return of(contents.get(key))
+                            .map(lockedPath -> deserialize(lockedPath).value);
+                }
+            }
+
             // Todo double-check lock is antipattern?
             // double-check lock
+            /*
             return ofNullable(locks.get(key))
                 .flatMap(lock -> {
                     synchronized (lock) {
@@ -152,12 +160,12 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                             .map(lockedPath -> deserialize(lockedPath).value);
                     }
                 });
+             */
         }
 
         // Todo try to rewrite a file with one operation if a path is the same for the same keys
         private Optional<V> put(@Nonnull K key, @Nonnull V value) {
             // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
-            // Todo introduce while logic in every method?
             while (true) {
                 Object lock = locks.computeIfAbsent(key, k -> new Object());
                 synchronized (lock) {
@@ -182,26 +190,31 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             }
         }
 
+        // Todo check all exceptions and possible options
         private Optional<V> remove(@Nonnull K key) {
-            // double check-lock
-            return ofNullable(contents.get(key))
-                    .flatMap(path -> {
-                        Object lock = locks.get(key);
-                        synchronized (lock) {
-                            return ofNullable(contents.get(key))
-                                    .map(lockedPath -> {
-                                        try {
-                                            contents.remove(key);
-                                        } catch (Exception e) {
-                                            throw new StorageException(format("Couldn't remove key %s from the contests", key));
-                                        }
-                                        V removedValue = deserialize(lockedPath).value;
-                                        removeFile(lockedPath);
-                                        validateInvariant(key);
-                                        return removedValue;
-                                    });
-                        }
-                    });
+            while (true) {
+                Object lock = locks.get(key);
+                if (lock == null)
+                    return empty();
+                synchronized (lock) {
+                    if (lock != locks.get(key))
+                        continue;
+                    // should always be not null since lock is not null
+                    return of(contents.get(key))
+                            .map(lockedPath -> {
+                                try {
+                                    contents.remove(key);
+                                } catch (Exception e) {
+                                    throw new StorageException(format("Couldn't remove key %s from the contests", key));
+                                }
+                                V removedValue = deserialize(lockedPath).value;
+                                removeFile(lockedPath);
+                                validateInvariant(key);
+                                locks.remove(key);
+                                return removedValue;
+                            });
+                }
+            }
         }
 
         // Not thread-safe. Call with proper sync if needed
