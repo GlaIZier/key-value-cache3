@@ -1,6 +1,7 @@
 package ru.glaizier.key.value.cache3.storage;
 
 /**
+ * General exception for all Storage. Usually this means to try one more time.
  * @author GlaIZier
  */
 public class StorageException extends RuntimeException {

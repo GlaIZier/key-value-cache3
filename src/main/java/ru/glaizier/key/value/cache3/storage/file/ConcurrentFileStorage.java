@@ -1,15 +1,14 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.empty;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -25,11 +24,16 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.empty;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
-import static ru.glaizier.key.value.cache3.util.function.Functions.wrap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
 
 // Todo create a single thread executor alternative to deal with io?
 
@@ -129,13 +133,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         return contents.size();
     }
 
-    /**
-     * Not thread-safe. Call with proper sync.
-     * In case of exceptions:
-     * If consistency wasn't violated, StorageException is thrown to indicate that you need to try one again.
-     * Otherwise, InconsistentFileStorageException is thrown to indicate that you should take care of the inconsistent file
-     * manually and try again.
-     */
+
     private class Transactional {
         // doesn't change anything. No need to cope with invariants.
         private Optional<V> get(@Nonnull K key) throws StorageException {
@@ -146,7 +144,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                 synchronized (lock) {
                     if (lock != locks.get(key))
                         continue;
-                    // can be null if lock was added by push() but not the exact value
+                    // can be null if the lock was added by push() but not a value
                     return ofNullable(contents.get(key))
                             .map(lockedPath -> deserialize(lockedPath).value);
                 }
@@ -166,7 +164,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         }
 
         // Todo try to rewrite a file with one operation if a path is the same for the same keys
-        private Optional<V> put(@Nonnull K key, @Nonnull V value) throws StorageException, InconsistentFileStorageException {
+        private Optional<V> put(@Nonnull K key, @Nonnull V value) throws StorageException {
             // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
             Object newLock = new Object();
             while (true) {
@@ -185,15 +183,10 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                         Optional<V> prevValueOpt = prevPathOpt.map(prevPath -> deserialize(prevPath).value);
                         Path newPath = serialize(key, value);
                         contents.put(key, newPath);
-                        validateInvariant(key);
                         saved = true;
-                        try {
-                            prevPathOpt.ifPresent(this::removeFile);
-                        } catch (StorageException e) {
-                            throw new InconsistentFileStorageException("Couldn't remove file", e, prevPathOpt.orElseThrow(IllegalStateException::new));
-                        }
+                        prevPathOpt.ifPresent(this::removeFile);
                         return prevValueOpt;
-                    } catch (StorageException | InconsistentFileStorageException e) {
+                    } catch (StorageException e) {
                         // restore previous state
                         if (!saved) {
                             prevPathOpt.ifPresent(prevPath -> contents.put(key, prevPath));
@@ -222,7 +215,6 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                                 contents.remove(key);
                                 try {
                                     removeFile(lockedPath);
-                                    validateInvariant(key);
                                     return removedValue;
                                 } catch (InconsistentFileStorageException e) {
                                     throw e;
@@ -254,7 +246,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
         }
 
         // Not thread-safe. Call with proper sync if needed
-        private Path serialize(@Nonnull K key, @Nonnull V value) throws StorageException, InconsistentFileStorageException {
+        private Path serialize(@Nonnull K key, @Nonnull V value) throws StorageException {
             String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
             Path serialized = folder.resolve(filename);
             boolean fileSaved = false;
@@ -273,28 +265,19 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
                 }
             } catch (Exception e) {
                 if (fileSaved)
-                    throw new InconsistentFileStorageException(format("Exception after file saving has occurred %s", serialized), e, serialized);
+                    throw new InconsistentFileStorageException(format("Exception after saving file %s has occurred", serialized), e, serialized);
                 else
                     throw new StorageException(e.getMessage(), e);
             }
         }
 
         // Not thread-safe. Call with proper sync if needed
-        private void validateInvariant(@Nonnull K key) throws InconsistentFileStorageException {
-            Path path = contents.get(key);
-            Object lock = locks.get(key);
-            boolean fileExists = path != null && Files.exists(path);
-            if ((path == null) ||
-                    (lock != null && fileExists))
-                return;
-
-            throw new InconsistentFileStorageException(format("FileStorage's invariant has been violated: path = %s, lock = %s, fileExists = %b",
-                    path, lock, fileExists), path);
-        }
-
-        // Not thread-safe. Call with proper sync if needed
         private boolean removeFile(@Nonnull Path path) throws StorageException {
-            return wrap(Files::deleteIfExists, StorageException.class).apply(path);
+            try {
+                return Files.deleteIfExists(path);
+            } catch (Exception e) {
+                throw new RedundantFileStorageException("Couldn't remove file", e, path);
+            }
         }
 
     }

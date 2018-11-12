@@ -2,10 +2,13 @@ package ru.glaizier.key.value.cache3.storage.file;
 
 import java.nio.file.Path;
 
+import ru.glaizier.key.value.cache3.storage.StorageException;
+
 /**
+ * Means to take care of the inconsistent file and try to repeat the unsuccessful action again
  * @author GlaIZier
  */
-public class InconsistentFileStorageException extends RuntimeException {
+public class InconsistentFileStorageException extends StorageException {
 
     private final Path path;
 
