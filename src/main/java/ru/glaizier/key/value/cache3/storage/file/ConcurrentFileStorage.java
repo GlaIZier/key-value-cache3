@@ -44,7 +44,6 @@ import ru.glaizier.key.value.cache3.util.Entry;
 @ThreadSafe
 // We don't use local locks for locking (we use locks in the heap)
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
-// Todo check architecture and exceptions handling
 public class ConcurrentFileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -163,9 +162,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
              */
         }
 
-        // Todo try to rewrite a file with one operation if a path is the same for the same keys
         private Optional<V> put(@Nonnull K key, @Nonnull V value) throws StorageException {
-            // Todo fix bug with simultaneous remove: CreateandGet, remove get, removes everything.
             Object newLock = new Object();
             while (true) {
                 Object lock = locks.computeIfAbsent(key, k -> newLock);
@@ -199,7 +196,6 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
             }
         }
 
-        // Todo check all exceptions and possible options
         private Optional<V> remove(@Nonnull K key) throws StorageException, InconsistentFileStorageException {
             while (true) {
                 Object lock = locks.get(key);
