@@ -35,6 +35,8 @@ import ru.glaizier.key.value.cache3.storage.Storage;
 import ru.glaizier.key.value.cache3.storage.StorageException;
 import ru.glaizier.key.value.cache3.util.Entry;
 
+// Todo create a single thread executor alternative to deal with io?
+
 /**
  * Objects in the heap (locks map) are used to introduce flexible (partial) locking. We could introduce even more
  * flexibility by using ReadWriteLock but it's not worth it for now.
@@ -42,7 +44,7 @@ import ru.glaizier.key.value.cache3.util.Entry;
 @ThreadSafe
 // We don't use local locks for locking (we use locks in the heap)
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
-public class ConcurrentFileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
+public class ConfinedFileStorage<K extends Serializable, V extends Serializable> implements Storage<K, V> {
 
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -62,11 +64,11 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     @GuardedBy("locks")
     private final Path folder;
 
-    public ConcurrentFileStorage() {
+    public ConfinedFileStorage() {
         this(TEMP_FOLDER);
     }
 
-    public ConcurrentFileStorage(Path folder) {
+    public ConfinedFileStorage(Path folder) {
         Objects.requireNonNull(folder, "folder");
         this.folder = folder;
         try {
@@ -131,7 +133,6 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     }
 
 
-    // Todo remove it
     private class Transactional {
         // doesn't change anything. No need to cope with invariants.
         private Optional<V> get(@Nonnull K key) throws StorageException {
