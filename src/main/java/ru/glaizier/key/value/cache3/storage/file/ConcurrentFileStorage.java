@@ -59,7 +59,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
 
     private final Transactional transactional = new Transactional();
 
-    @GuardedBy("locks")
+    @GuardedBy("locks.get()")
     private final Path folder;
 
     public ConcurrentFileStorage() {
