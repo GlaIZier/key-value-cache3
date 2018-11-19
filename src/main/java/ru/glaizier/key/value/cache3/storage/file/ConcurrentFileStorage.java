@@ -1,15 +1,14 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.empty;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -25,10 +24,16 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.empty;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
 
 /**
  * Objects in the heap (locks map) are used to introduce flexible (partial) locking. We could introduce even more
@@ -94,6 +99,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     }
 
     @Override
+    // Todo add while logic to a separate method
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         while (true) {
@@ -191,6 +197,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     }
 
     // Not thread-safe. Call with proper sync if needed
+    // Todo change to tryLock to avoid deadlocks? and add reaction to InterruptedException?
     @SuppressWarnings("unchecked")
     private Entry<K, V> deserialize(@Nonnull Path path) throws StorageException {
         try (FileChannel channel = FileChannel.open(path);

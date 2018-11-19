@@ -1,15 +1,14 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-import java.io.*;
+import static java.lang.String.format;
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+import static java.util.stream.Collectors.toConcurrentMap;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -23,11 +22,20 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-import static java.lang.String.format;
-import static java.util.Optional.empty;
-import static java.util.stream.Collectors.toConcurrentMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
 
 /**
  * Writes on disk are confined to one thread
@@ -87,8 +95,7 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
     @Override
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
-
-        return empty();
+        return find(key).map(entry -> entry.value);
     }
 
     @Override
@@ -96,6 +103,7 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
 
+        Optional<Entry<Path, V>> entry = find(key);
         return empty();
     }
 
@@ -115,6 +123,27 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
     @Override
     public int getSize() {
         return contents.size();
+    }
+
+    public boolean stopDiskWorker() throws InterruptedException {
+        // Todo add shutdownNow()?
+        diskWorker.shutdown();
+        return diskWorker.awaitTermination(10, TimeUnit.SECONDS);
+    }
+
+    private Optional<Entry<Path, V>> find(@Nonnull K key) {
+        Future<Optional<Entry<Path, V>>> task = diskWorker.submit(() -> {
+            if (contents.containsKey(key)) {
+                Path path = contents.get(key);
+                return of(new Entry<>(path, deserialize(path).value));
+            }
+            return empty();
+        });
+        try {
+            return task.get();
+        } catch (Exception e) {
+            throw new StorageException(e.getMessage(), e);
+        }
     }
 
     // Not thread-safe. Call with proper sync if needed
