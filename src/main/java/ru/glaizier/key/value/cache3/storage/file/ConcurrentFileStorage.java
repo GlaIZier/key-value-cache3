@@ -215,6 +215,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     }
 
     // Not thread-safe. Call with proper sync if needed
+    // Todo thread-safe because it uses random path
     private Path serialize(@Nonnull K key, @Nonnull V value) throws StorageException {
         String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
         Path serialized = folder.resolve(filename);

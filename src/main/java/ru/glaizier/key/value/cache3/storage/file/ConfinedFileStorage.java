@@ -3,6 +3,7 @@ package ru.glaizier.key.value.cache3.storage.file;
 import static java.lang.String.format;
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
+import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toConcurrentMap;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -95,7 +96,9 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
     @Override
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
-        return find(key).map(entry -> entry.value);
+        Future<Optional<V>> task = diskWorker.submit(() -> ofNullable(contents.get(key))
+            .map(path -> deserialize(path).value));
+        return getFutureValue(task);
     }
 
     @Override
@@ -103,15 +106,29 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
 
-        Optional<Entry<Path, V>> entry = find(key);
-        return empty();
+        Future<Optional<V>> task = diskWorker.submit(() -> {
+            Optional<Path> prevPathOpt = ofNullable(contents.get(key));
+            Optional<V> prevValueOpt = prevPathOpt
+                .map(prevPath -> deserialize(prevPath).value);
+            Path path = serialize(key, value);
+            contents.put(key, path);
+            prevPathOpt.ifPresent(this::removeFile);
+            return prevValueOpt;
+        });
+        return getFutureValue(task);
     }
 
     @Override
     public Optional<V> remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
 
-        return empty();
+        Future<Optional<V>> task = diskWorker.submit(() -> {
+            Optional<Path> removedPathOpt = ofNullable(contents.remove(key));
+            Optional<V> prevValue = removedPathOpt.map(prevPath -> deserialize(prevPath).value);
+            removedPathOpt.ifPresent(this::removeFile);
+            return prevValue;
+        });
+        return getFutureValue(task);
     }
 
     @Override
@@ -129,6 +146,16 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
         // Todo add shutdownNow()?
         diskWorker.shutdown();
         return diskWorker.awaitTermination(10, TimeUnit.SECONDS);
+    }
+
+    private Optional<V> getFutureValue(Future<Optional<V>> future) {
+        try {
+            return future.get();
+        } catch (Exception e) {
+            if (e.getCause() instanceof StorageException)
+                throw (StorageException) e.getCause();
+            throw new StorageException(e.getMessage(), e);
+        }
     }
 
     private Optional<Entry<Path, V>> find(@Nonnull K key) {
