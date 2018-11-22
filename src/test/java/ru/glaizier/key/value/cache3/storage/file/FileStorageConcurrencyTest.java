@@ -1,35 +1,48 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.junit.AfterClass;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import ru.glaizier.key.value.cache3.storage.Storage;
-
-import java.io.Serializable;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.IntStream;
-
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
-import static org.hamcrest.Matchers.*;
+import java.io.Serializable;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
+
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertThat;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
 
 /**
  * @author GlaIZier
  */
 // Todo introduce performance test for the use case with lots of locks and without
-public class FileStorageConcurrencyTest {
+public abstract class FileStorageConcurrencyTest {
 
     private static final int THREADS_NUMBER = 10;
 
     private static final int TASKS_NUMBER = 10;
 
-    private static ExecutorService executorService = Executors.newCachedThreadPool();
+    private static ExecutorService executorService;
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -67,6 +80,13 @@ public class FileStorageConcurrencyTest {
         }
     }
 
+    // Can't init it inline because in this case this executorService will be initialized only once, when the class is
+    // loaded by the class loader at the very beginning. So for the next tests executorService will be shut down.
+    @BeforeClass
+    public static void init() {
+        executorService = Executors.newCachedThreadPool();
+    }
+
     @AfterClass
     public static void cleanUpClass() throws InterruptedException {
         executorService.shutdownNow();
@@ -75,11 +95,15 @@ public class FileStorageConcurrencyTest {
     }
 
 
+    protected abstract <K extends Serializable, V extends Serializable> Storage<K, V> getStorage(Path folder);
+
+    protected abstract <K extends Serializable, V extends Serializable> boolean cleanUpStorage(Storage<K, V> storage);
+
     @Test(timeout = 10_000)
     // timeout in case of deadlocks
     // put every element with taskI simultaneously using CyclicBarrier
     public void put() throws InterruptedException, ExecutionException {
-        Storage<Integer, String> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, String> storage = getStorage(temporaryFolder.getRoot().toPath());
 
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
@@ -107,12 +131,14 @@ public class FileStorageConcurrencyTest {
         assertThat(storage.getSize(), is(THREADS_NUMBER));
         IntStream.range(0, TASKS_NUMBER)
             .forEach(taskI -> assertThat("taskI: " + taskI, storage.contains(taskI), is(true)));
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // get() and put() simultaneously using latch
     public void getPut() throws InterruptedException, ExecutionException {
-        Storage<Integer, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, Integer> storage = getStorage(temporaryFolder.getRoot().toPath());
         storage.put(0, -1);
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
@@ -154,12 +180,14 @@ public class FileStorageConcurrencyTest {
             assertThat("threadI: " + threadI, (Integer) futures.get(threadI).get(),
                 allOf(greaterThanOrEqualTo(-1), lessThan(THREADS_NUMBER)));
         }
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // get() and remove() simultaneously using latch
     public void getRemove() throws InterruptedException, ExecutionException {
-        Storage<Integer, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, Integer> storage = getStorage(temporaryFolder.getRoot().toPath());
         for (int i = 0; i < THREADS_NUMBER; i++) {
             storage.put(i, i);
         }
@@ -201,12 +229,14 @@ public class FileStorageConcurrencyTest {
             assertThat("threadI: " + threadI, futures.get(threadI).get(),
                 anyOf(is(Optional.of(threadI)), is(Optional.empty())));
         }
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // get(), put and remove() simultaneously using latch
     public void getPutRemove() throws InterruptedException, ExecutionException {
-        Storage<Integer, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<Integer, Integer> storage = getStorage(temporaryFolder.getRoot().toPath());
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 3);
         List<Callable<Object>> getPutRemoveTasks = IntStream.range(0, THREADS_NUMBER)
@@ -277,13 +307,15 @@ public class FileStorageConcurrencyTest {
         for (int threadI = 0; threadI < THREADS_NUMBER; threadI++)
             getFutures.get(threadI).get().ifPresent(v -> countPresent.incrementAndGet());
         assertThat(storage.getSize(), is(countPresent.get()));
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // timeout in case of deadlocks
     // put every element with taskI simultaneously using CyclicBarrier
     public void putWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, String> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, String> storage = getStorage(temporaryFolder.getRoot().toPath());
 
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
@@ -311,12 +343,14 @@ public class FileStorageConcurrencyTest {
         assertThat(storage.getSize(), is(THREADS_NUMBER));
         IntStream.range(0, TASKS_NUMBER)
             .forEach(taskI -> assertThat("taskI: " + taskI, storage.contains(new HashCodeEqualsPojo(0, taskI)), is(true)));
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // get() and put() simultaneously using latch
     public void getPutWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, Integer> storage = getStorage(temporaryFolder.getRoot().toPath());
         storage.put(new HashCodeEqualsPojo(0, 0), -1);
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
@@ -358,12 +392,14 @@ public class FileStorageConcurrencyTest {
             assertThat("threadI: " + threadI, (Integer) futures.get(threadI).get(),
                 allOf(greaterThanOrEqualTo(-1), lessThan(THREADS_NUMBER)));
         }
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // get() and remove() simultaneously using latch
     public void getRemoveWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, Integer> storage = getStorage(temporaryFolder.getRoot().toPath());
         for (int i = 0; i < THREADS_NUMBER; i++) {
             storage.put(new HashCodeEqualsPojo(0, i), i);
         }
@@ -405,12 +441,14 @@ public class FileStorageConcurrencyTest {
             assertThat("threadI: " + threadI, futures.get(threadI).get(),
                 anyOf(is(Optional.of(threadI)), is(Optional.empty())));
         }
+
+        cleanUpStorage(storage);
     }
 
     @Test(timeout = 10_000)
     // get(), put and remove() simultaneously using latch
     public void getPutRemoveWithCollisions() throws InterruptedException, ExecutionException {
-        Storage<HashCodeEqualsPojo, Integer> storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
+        Storage<HashCodeEqualsPojo, Integer> storage = getStorage(temporaryFolder.getRoot().toPath());
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 3);
         List<Callable<Object>> getPutRemoveTasks = IntStream.range(0, THREADS_NUMBER)
@@ -481,5 +519,7 @@ public class FileStorageConcurrencyTest {
         for (int threadI = 0; threadI < THREADS_NUMBER; threadI++)
             getFutures.get(threadI).get().ifPresent(v -> countPresent.incrementAndGet());
         assertThat(storage.getSize(), is(countPresent.get()));
+
+        cleanUpStorage(storage);
     }
 }

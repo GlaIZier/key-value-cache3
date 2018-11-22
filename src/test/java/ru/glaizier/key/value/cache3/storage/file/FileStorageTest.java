@@ -1,11 +1,5 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import ru.glaizier.key.value.cache3.storage.Storage;
-
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Objects;
@@ -14,19 +8,26 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
 
 /**
  * @author GlaIZier
  */
-public class FileStorageTest {
+public abstract class FileStorageTest {
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-    private Storage<Integer, String> storage;
+    protected Storage<Integer, String> storage;
 
-    private Storage<HashCodeEqualsPojo, String> collisionsStorage;
+    protected Storage<HashCodeEqualsPojo, String> collisionsStorage;
 
     private static class HashCodeEqualsPojo implements Serializable {
         private final int i;
@@ -62,45 +63,9 @@ public class FileStorageTest {
         }
     }
 
-    @Before
-    public void init() {
-        storage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
-        collisionsStorage = new ConcurrentFileStorage<>(temporaryFolder.getRoot().toPath());
-    }
-
-    /*
-    @Test
-    public void createContents() throws IOException {
-        IntStream.rangeClosed(1, 2).forEach(i -> {
-            try {
-                temporaryFolder.newFile(format(ConcurrentFileStorage.FILENAME_FORMAT, i, 0));
-                temporaryFolder.newFile(format(ConcurrentFileStorage.FILENAME_FORMAT, i, 1));
-            } catch (IOException e) {
-                throw new RuntimeException(e.getMessage(), e);
-            }
-        });
-        temporaryFolder.newFile("somefile.ser");
-        Map<Integer, List<Path>> contents = ConcurrentFileStorage(temporaryFolder.getRoot().toPath());
-
-        assertThat(contents.size(), is(2));
-        assertThat(contents.get(1).size(), is(2));
-        assertThat(contents.get(1).get(0).toString(), not(isEmptyOrNullString()));
-        assertThat(contents.get(1).get(1).toString(), not(isEmptyOrNullString()));
-        assertThat(contents.get(2).size(), is(2));
-        assertThat(contents.get(2).get(0).toString(), not(isEmptyOrNullString()));
-        assertThat(contents.get(2).get(1).toString(), not(isEmptyOrNullString()));
-    }
-
-    @Test
-    public void createContentsWhenFolderEmpty() throws IOException {
-        Map<Integer, List<Path>> contents = FileStorage.createContents(temporaryFolder.getRoot().toPath());
-        assertTrue(contents.isEmpty());
-    }
-    */
-
-
     @Test
     public void put() {
+        System.out.println(storage.getClass().getName());
         storage.put(1, "1");
         storage.put(2, "2");
 
