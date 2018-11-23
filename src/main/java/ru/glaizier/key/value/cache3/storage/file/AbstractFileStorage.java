@@ -14,10 +14,11 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.GuardedBy;
@@ -43,7 +44,8 @@ public abstract class AbstractFileStorage<K extends Serializable, V extends Seri
 
     protected static final Pattern FILENAME_PATTERN = Pattern.compile("^(\\d+)#(\\S+)\\.(ser)$");
 
-    protected final ConcurrentMap<K, Path> contents;
+    // By default ConcurrentMap is used
+    protected final Map<K, Path> contents;
 
     @GuardedBy("derived classes")
     protected final Path folder;
@@ -65,20 +67,24 @@ public abstract class AbstractFileStorage<K extends Serializable, V extends Seri
         }
     }
 
-    // call only from a constructor
-    protected ConcurrentMap<K, Path> buildContents(Path folder) throws IOException {
+    protected Stream<Entry<K, Path>> getFilesStream(Path folder) throws IOException {
         return Files.walk(folder)
-                .filter(Files::isRegularFile)
-                .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
-                .map(path -> {
-                    try {
-                        return new Entry<>(deserialize(path).key, path);
-                    } catch (Exception e) {
-                        log.error("Couldn't deserialize key-value for the path: " + path, e);
-                        return null;
-                    }
-                })
-                .filter(Objects::nonNull)
+            .filter(Files::isRegularFile)
+            .filter(path -> FILENAME_PATTERN.matcher(path.getFileName().toString()).find())
+            .map(path -> {
+                try {
+                    return new Entry<>(deserialize(path).key, path);
+                } catch (Exception e) {
+                    log.error("Couldn't deserialize key-value for the path: " + path, e);
+                    return null;
+                }
+            })
+            .filter(Objects::nonNull);
+    }
+
+    // call only from a constructor
+    protected Map<K, Path> buildContents(Path folder) throws IOException {
+        return getFilesStream(folder)
                 .collect(toConcurrentMap(entry -> entry.key, entry -> entry.value, (one, another) -> one));
     }
 
