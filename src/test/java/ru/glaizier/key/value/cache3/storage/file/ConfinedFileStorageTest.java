@@ -6,7 +6,7 @@ import org.junit.Before;
 /**
  * @author GlaIZier
  */
-public class ConfinedFileStorageTest extends FileStorageTest {
+public class ConfinedFileStorageTest extends AbstractFileStorageTest {
 
     @Before
     public void init() {

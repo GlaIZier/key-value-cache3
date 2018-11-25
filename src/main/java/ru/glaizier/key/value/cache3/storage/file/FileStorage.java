@@ -18,6 +18,14 @@ import static java.util.stream.Collectors.toMap;
 @NotThreadSafe
 public class FileStorage<K extends Serializable, V extends Serializable> extends AbstractFileStorage<K, V> {
 
+    public FileStorage() {
+        this(TEMP_FOLDER);
+    }
+
+    public FileStorage(@Nonnull Path folder) {
+        super(folder);
+    }
+
     @Override
     protected Map<K, Path> buildContents(Path folder) throws IOException {
         return super.getFilesStream(folder)
