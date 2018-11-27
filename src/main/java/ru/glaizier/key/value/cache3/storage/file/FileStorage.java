@@ -1,9 +1,7 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import ru.glaizier.key.value.cache3.storage.StorageException;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.NotThreadSafe;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toMap;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Path;
@@ -11,10 +9,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toMap;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.NotThreadSafe;
 
-// Todo refactor to synchronized (or create synchronized wrapper)
+import ru.glaizier.key.value.cache3.storage.StorageException;
+
 @NotThreadSafe
 public class FileStorage<K extends Serializable, V extends Serializable> extends AbstractFileStorage<K, V> {
 

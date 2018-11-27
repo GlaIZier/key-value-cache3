@@ -47,7 +47,6 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     }
 
     @Override
-    // Todo add while logic to a separate method
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
         // Todo do I need to read it while holding a lock?
