@@ -9,7 +9,7 @@ import ru.glaizier.key.value.cache3.storage.SynchronousStorage;
 /**
  * @author GlaIZier
  */
-public class SynchronousFileStorageConcurrencyTest extends FileStorageConcurrencyTest {
+public class SynchronousFileStorageConcurrencyTest extends AbstractFileStorageConcurrencyTest {
 
     protected <K extends Serializable, V extends Serializable> Storage<K, V> getStorage(Path folder) {
         return new SynchronousStorage<>(new FileStorage<>(folder));

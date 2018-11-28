@@ -36,7 +36,7 @@ import ru.glaizier.key.value.cache3.storage.Storage;
  * @author GlaIZier
  */
 // Todo introduce performance test for the use case with lots of locks and without
-public abstract class FileStorageConcurrencyTest {
+public abstract class AbstractFileStorageConcurrencyTest {
 
     private static final int THREADS_NUMBER = 10;
 
