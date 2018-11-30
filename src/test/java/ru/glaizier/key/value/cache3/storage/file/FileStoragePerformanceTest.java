@@ -10,9 +10,10 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertThat;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -33,7 +34,7 @@ public class FileStoragePerformanceTest {
 
     private static final int THREADS_NUMBER = 10;
 
-    private static final int TASKS_NUMBER = 100;
+    private static final int TASKS_NUMBER = 125;
 
     private static ExecutorService executorService;
 
@@ -54,18 +55,41 @@ public class FileStoragePerformanceTest {
             System.exit(0);
     }
 
+    // Run with sufficient free memory amount to avoid GC
     @Test
     public void concurrentStorageEfficiency() throws IOException, InterruptedException, ExecutionException {
         List<Callable<Object>> pushTasks = buildPushTasks(1, TASKS_NUMBER + 1, TASKS_NUMBER);
 
         storage = new SynchronousStorage<>(new FileStorage<>(temporaryFolder.newFolder().toPath()));
         long start = System.currentTimeMillis();
-        List<Future<Object>> tasks = executorService.invokeAll(pushTasks);
+        executorService.invokeAll(pushTasks);
         // choose randomly a task and print it to disable optimization
         int numberToGet = new Random().nextInt(TASKS_NUMBER) + 1;
         log.trace((String.valueOf(storage.getSize())));
         log.trace(storage.get(numberToGet).toString());
-        System.out.println(System.currentTimeMillis() - start);
+        long synchronousStorageDuration = System.currentTimeMillis() - start;
+        log.info("SynchronousStorage's duration: {} ms", synchronousStorageDuration);
+
+        storage = new ConfinedFileStorage<>(temporaryFolder.newFolder().toPath());
+        start = System.currentTimeMillis();
+        executorService.invokeAll(pushTasks);
+        numberToGet = new Random().nextInt(TASKS_NUMBER) + 1;
+        log.trace((String.valueOf(storage.getSize())));
+        log.trace(storage.get(numberToGet).toString());
+        long confinedStorageDuration = System.currentTimeMillis() - start;
+        log.info("ConfinedStorage's duration: {} ms", confinedStorageDuration);
+
+        storage = new ConcurrentFileStorage<>(temporaryFolder.newFolder().toPath());
+        start = System.currentTimeMillis();
+        executorService.invokeAll(pushTasks);
+        numberToGet = new Random().nextInt(TASKS_NUMBER) + 1;
+        log.trace((String.valueOf(storage.getSize())));
+        log.trace(storage.get(numberToGet).toString());
+        long concurrentStorageDuration = System.currentTimeMillis() - start;
+        log.info("ConcurrentStorage's duration: {} ms", concurrentStorageDuration);
+
+        assertThat(synchronousStorageDuration > confinedStorageDuration, is(true));
+        assertThat(confinedStorageDuration > concurrentStorageDuration, is(true));
     }
 
     private List<Callable<Object>> buildPushTasks(int leftBoundIncl, int rightBoundExcl, int tasksNum) {
