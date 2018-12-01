@@ -1,12 +1,15 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import static java.lang.String.format;
-import static java.util.stream.Collectors.toConcurrentMap;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ru.glaizier.key.value.cache3.storage.Storage;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+import ru.glaizier.key.value.cache3.util.Entry;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -20,16 +23,8 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.StorageException;
-import ru.glaizier.key.value.cache3.util.Entry;
+import static java.lang.String.format;
+import static java.util.stream.Collectors.toConcurrentMap;
 
 
 @ThreadSafe
@@ -104,7 +99,6 @@ public abstract class AbstractFileStorage<K extends Serializable, V extends Seri
 
 
     // Not thread-safe. Call with proper sync if needed
-    // Todo change to tryLock to avoid deadlocks? and add reaction to InterruptedException?
     @SuppressWarnings("unchecked")
     protected Entry<K, V> deserialize(@Nonnull Path path) throws StorageException {
         try (FileChannel channel = FileChannel.open(path);
@@ -122,7 +116,7 @@ public abstract class AbstractFileStorage<K extends Serializable, V extends Seri
     }
 
     // Not thread-safe. Call with proper sync if needed
-    // Todo thread-safe because it uses random path
+    // In theory, it can be used from multiple threads as it uses random path
     protected Path serialize(@Nonnull K key, @Nonnull V value) throws StorageException {
         String filename = format(FILENAME_FORMAT, key.hashCode(), UUID.randomUUID().toString());
         Path serialized = folder.resolve(filename);

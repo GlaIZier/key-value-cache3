@@ -1,8 +1,9 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import static java.util.Optional.empty;
-import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.toConcurrentMap;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.ThreadSafe;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Path;
@@ -12,10 +13,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.ThreadSafe;
-
-import ru.glaizier.key.value.cache3.storage.StorageException;
+import static java.util.Optional.empty;
+import static java.util.Optional.ofNullable;
+import static java.util.stream.Collectors.toConcurrentMap;
 
 /**
  * Objects in the heap (locks map) are used to introduce flexible (partial) locking. We could introduce even more
@@ -49,7 +49,7 @@ public class ConcurrentFileStorage<K extends Serializable, V extends Serializabl
     @Override
     public Optional<V> get(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
-        // Todo do I need to read it while holding a lock?
+
         while (true) {
             Object lock = locks.get(key);
             if (lock == null)

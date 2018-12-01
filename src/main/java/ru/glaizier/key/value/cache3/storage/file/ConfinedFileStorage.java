@@ -1,6 +1,9 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import static java.util.Optional.ofNullable;
+import ru.glaizier.key.value.cache3.storage.StorageException;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.ThreadSafe;
 import java.io.Serializable;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -10,10 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.ThreadSafe;
-
-import ru.glaizier.key.value.cache3.storage.StorageException;
+import static java.util.Optional.ofNullable;
 
 /**
  * Writes on disk are confined to one thread
@@ -71,9 +71,12 @@ public class ConfinedFileStorage<K extends Serializable, V extends Serializable>
     }
 
     public boolean stopDiskWorker() throws InterruptedException {
-        // Todo add shutdownNow()?
+        return stopDiskWorker(10);
+    }
+
+    public boolean stopDiskWorker(int timeoutInSec) throws InterruptedException {
         diskWorker.shutdown();
-        return diskWorker.awaitTermination(10, TimeUnit.SECONDS);
+        return diskWorker.awaitTermination(timeoutInSec, TimeUnit.SECONDS);
     }
 
     private Optional<V> getFutureValue(Future<Optional<V>> future) {
