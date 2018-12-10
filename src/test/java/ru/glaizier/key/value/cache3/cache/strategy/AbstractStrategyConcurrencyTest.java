@@ -15,6 +15,7 @@ import java.util.stream.IntStream;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -29,12 +30,12 @@ public abstract class AbstractStrategyConcurrencyTest {
 
     private static ExecutorService executorService;
 
-    private final Strategy<Integer> strategy = getStrategy();
+    private Strategy<Integer> strategy;
 
     // Can't init it inline because in this case this executorService will be initialized only once, when the class is
     // loaded by the class loader at the very beginning. So for the next tests executorService will be shut down.
     @BeforeClass
-    public static void init() {
+    public static void initStatic() {
         executorService = Executors.newCachedThreadPool();
     }
 
@@ -46,10 +47,8 @@ public abstract class AbstractStrategyConcurrencyTest {
         }
     }
 
-    protected abstract Strategy<Integer> getStrategy();
-
-    private List<Callable<Object>> buildEvictTasks(int threadsNumber, CountDownLatch latch) {
-        return IntStream.range(0, threadsNumber)
+    static List<Callable<Object>> buildEvictTasks(Strategy<?> strategy, int tasksNumber, CountDownLatch latch) {
+        return IntStream.range(0, tasksNumber)
             .mapToObj(threadI -> (Callable<Object>) () -> {
                 latch.countDown();
                 try {
@@ -66,8 +65,8 @@ public abstract class AbstractStrategyConcurrencyTest {
     }
 
 
-    private List<Callable<Object>> buildRemoveTasks(int threadsNumber, CountDownLatch latch) {
-        return IntStream.range(0, threadsNumber)
+    static List<Callable<Object>> buildRemoveTasks(Strategy<? super Integer> strategy, int tasksNumber, CountDownLatch latch) {
+        return IntStream.range(0, tasksNumber)
             .mapToObj(threadI -> (Runnable) () -> {
                 latch.countDown();
                 try {
@@ -81,6 +80,30 @@ public abstract class AbstractStrategyConcurrencyTest {
             })
             .map(Executors::callable)
             .collect(toList());
+    }
+
+    static List<Callable<Object>> buildUseTasks(Strategy<? super Integer> strategy, int tasksNumber, CountDownLatch latch) {
+        return IntStream.range(0, tasksNumber)
+            .mapToObj(threadI -> (Runnable) () -> {
+                latch.countDown();
+                try {
+                    latch.await();
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                strategy.use(threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+    }
+
+    protected abstract Strategy<Integer> getStrategy();
+
+    @Before
+    public void init() {
+        strategy = getStrategy();
     }
 
     @Test(timeout = 10_000)
@@ -120,7 +143,7 @@ public abstract class AbstractStrategyConcurrencyTest {
     // get() and put() simultaneously using latch
     public void evictUse() throws InterruptedException, ExecutionException {
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
-        List<Callable<Object>> evictPushTasks = buildEvictTasks(THREADS_NUMBER, latch);
+        List<Callable<Object>> evictPushTasks = buildEvictTasks(strategy, THREADS_NUMBER, latch);
         List<Callable<Object>> useTasks = IntStream.range(0, THREADS_NUMBER)
             .mapToObj(threadI -> (Runnable) () -> {
                 latch.countDown();
@@ -155,8 +178,8 @@ public abstract class AbstractStrategyConcurrencyTest {
         }
 
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 2);
-        List<Callable<Object>> evictRemoveTasks = buildEvictTasks(THREADS_NUMBER, latch);
-        List<Callable<Object>> removeTasks = buildRemoveTasks(THREADS_NUMBER, latch);
+        List<Callable<Object>> evictRemoveTasks = buildEvictTasks(strategy, THREADS_NUMBER, latch);
+        List<Callable<Object>> removeTasks = buildRemoveTasks(strategy, THREADS_NUMBER, latch);
         evictRemoveTasks.addAll(removeTasks);
         List<Future<Object>> futures = executorService.invokeAll(evictRemoveTasks);
 
@@ -170,22 +193,9 @@ public abstract class AbstractStrategyConcurrencyTest {
     @Test(timeout = 10_000)
     public void evictUseRemove() throws InterruptedException, ExecutionException {
         CountDownLatch latch = new CountDownLatch(THREADS_NUMBER * 5);
-        List<Callable<Object>> evictPutRemoveTasks = buildEvictTasks(THREADS_NUMBER, latch);
-        List<Callable<Object>> useTasks = IntStream.range(0, THREADS_NUMBER * 3)
-            .mapToObj(threadI -> (Runnable) () -> {
-                latch.countDown();
-                try {
-                    latch.await();
-                    Thread.sleep((long) (Math.random() * 10));
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                Thread.yield();
-                strategy.use(threadI);
-            })
-            .map(Executors::callable)
-            .collect(toList());
-        List<Callable<Object>> removeTasks = buildRemoveTasks(THREADS_NUMBER, latch);
+        List<Callable<Object>> evictPutRemoveTasks = buildEvictTasks(strategy, THREADS_NUMBER, latch);
+        List<Callable<Object>> useTasks = buildUseTasks(strategy, THREADS_NUMBER * 3,  latch);
+        List<Callable<Object>> removeTasks = buildRemoveTasks(strategy, THREADS_NUMBER, latch);
         evictPutRemoveTasks.addAll(useTasks);
         evictPutRemoveTasks.addAll(removeTasks);
         List<Future<Object>> futures = executorService.invokeAll(evictPutRemoveTasks);
