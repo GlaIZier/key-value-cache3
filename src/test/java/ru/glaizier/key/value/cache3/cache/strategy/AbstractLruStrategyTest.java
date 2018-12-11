@@ -15,28 +15,28 @@ public abstract class AbstractLruStrategyTest extends AbstractStrategyTest {
 
     @Test
     public void getEmptyOnEmptyQueue() {
-        assertThat(getStrategy().evict(), is(Optional.empty()));
+        assertThat(strategy.evict(), is(Optional.empty()));
     }
 
     @Test
     public void getOneAfterOneInsert() {
-        assertFalse(getStrategy().use(1));
-        assertThat(getStrategy().evict(), is(Optional.of(1)));
+        assertFalse(strategy.use(1));
+        assertThat(strategy.evict(), is(Optional.of(1)));
     }
 
     @Test
     public void getOneAfterOneTwoInserts() {
-        assertFalse(getStrategy().use(1));
-        assertFalse(getStrategy().use(2));
-        assertThat(getStrategy().evict(), is(Optional.of(1)));
+        assertFalse(strategy.use(1));
+        assertFalse(strategy.use(2));
+        assertThat(strategy.evict(), is(Optional.of(1)));
     }
 
     @Test
     public void getTwoAfterOneTwoInsertsAndOneUpdate() {
-        assertFalse(getStrategy().use(1));
-        assertFalse(getStrategy().use(2));
-        assertTrue(getStrategy().use(1));
-        assertThat(getStrategy().evict(), is(Optional.of(2)));
+        assertFalse(strategy.use(1));
+        assertFalse(strategy.use(2));
+        assertTrue(strategy.use(1));
+        assertThat(strategy.evict(), is(Optional.of(2)));
     }
 
 }
