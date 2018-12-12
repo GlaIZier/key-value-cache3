@@ -13,6 +13,7 @@ import javax.annotation.concurrent.ThreadSafe;
  * @author GlaIZier
  */
 @ThreadSafe
+// Todo come up with an idea how to use Navigable map to speed it up
 public class ConcurrentLruStrategy<K> implements Strategy<K> {
 
     @GuardedBy("useLock")

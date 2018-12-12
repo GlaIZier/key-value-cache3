@@ -101,8 +101,11 @@
             <artifactId>jsr305</artifactId>
             <version>3.0.2</version>
         </dependency>
-
-
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-collections4</artifactId>
+            <version>4.2</version>
+        </dependency>
 
         <dependency>
             <groupId>junit</groupId>
