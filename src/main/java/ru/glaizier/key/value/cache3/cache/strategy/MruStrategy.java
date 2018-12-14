@@ -15,6 +15,7 @@ import org.apache.commons.collections4.map.LinkedMap;
  * @author GlaIZier
  */
 @NotThreadSafe
+// Todo Add my LinkedHashSet implementation and another MRUstrategy
 public class MruStrategy<K> implements Strategy<K> {
 
     // as we don't need map, this object is saved as values

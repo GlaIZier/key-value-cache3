@@ -21,7 +21,6 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
 
     private final Object useLock = new Object();
 
-
     @Override
     public Optional<K> evict() {
         return Optional.ofNullable(q.poll());
@@ -31,6 +30,7 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
      * O(n)
      */
     @Override
+    // Todo try to introduce Atomic reference?
     public boolean use(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
 
