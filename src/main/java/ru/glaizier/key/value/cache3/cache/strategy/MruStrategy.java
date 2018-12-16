@@ -1,21 +1,18 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
-import static java.util.Optional.empty;
-import static java.util.Optional.of;
-import static java.util.Optional.ofNullable;
-import java.util.Objects;
-import java.util.Optional;
+import org.apache.commons.collections4.map.LinkedMap;
 
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.NotThreadSafe;
+import java.util.Objects;
+import java.util.Optional;
 
-import org.apache.commons.collections4.map.LinkedMap;
+import static java.util.Optional.*;
 
 /**
  * @author GlaIZier
  */
 @NotThreadSafe
-// Todo Add my LinkedHashSet implementation and another MRUstrategy
 public class MruStrategy<K> implements Strategy<K> {
 
     // as we don't need map, this object is saved as values
@@ -23,7 +20,7 @@ public class MruStrategy<K> implements Strategy<K> {
 
     /**
      * We need to be able to get by key, replace elements and get a last element in queue in O(1).
-     * This can be achieved by Collections4 library.
+     * This can be achieved by using Collections4 library.
      */
     private final LinkedMap<K, Object> queue = new LinkedMap<>();
 
