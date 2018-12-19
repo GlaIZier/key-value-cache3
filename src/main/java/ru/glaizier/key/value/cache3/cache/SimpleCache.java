@@ -25,6 +25,8 @@ public class SimpleCache<K, V> implements Cache<K, V> {
 
     private final int capacity;
 
+    private final Object lock = new Object();
+
     public SimpleCache(Storage<K, V> storage, Strategy<K> strategy, int capacity) {
         if (capacity <= 0)
             throw new IllegalArgumentException("Capacity can't be less than 1!");
@@ -60,11 +62,13 @@ public class SimpleCache<K, V> implements Cache<K, V> {
 
     @Override
     public Optional<Map.Entry<K, V>> evict() {
-        return strategy.evict()
-            .map(evictedKey -> {
-                V evictedValue = storage.remove(evictedKey).orElseThrow(IllegalStateException::new);
-                return new AbstractMap.SimpleImmutableEntry<>(evictedKey, evictedValue);
-            });
+        synchronized (lock) {
+            return strategy.evict()
+                .map(evictedKey -> {
+                    V evictedValue = storage.remove(evictedKey).orElseThrow(IllegalStateException::new);
+                    return new AbstractMap.SimpleImmutableEntry<>(evictedKey, evictedValue);
+                });
+        }
     }
 
     @Override
