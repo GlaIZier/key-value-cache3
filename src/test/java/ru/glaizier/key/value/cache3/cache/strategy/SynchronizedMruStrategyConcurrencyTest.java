@@ -7,6 +7,6 @@ public class SynchronizedMruStrategyConcurrencyTest extends AbstractStrategyConc
 
     @Override
     protected Strategy<Integer> getStrategy() {
-        return new SynchronousStrategy<>(new MruStrategy<>());
+        return new SynchronizedStrategy<>(new MruStrategy<>());
     }
 }

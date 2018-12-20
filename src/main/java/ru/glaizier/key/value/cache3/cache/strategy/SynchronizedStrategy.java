@@ -1,23 +1,24 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
+import java.util.Objects;
+import java.util.Optional;
+
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
-import java.util.Objects;
-import java.util.Optional;
 
 /**
  * @author GlaIZier
  */
 @ThreadSafe
-public class SynchronousStrategy<K> implements Strategy<K> {
+public class SynchronizedStrategy<K> implements Strategy<K> {
 
     @GuardedBy("lock")
     private final Strategy<K> strategy;
 
     private final Object lock = new Object();
 
-    public SynchronousStrategy(Strategy<K> queue) {
+    public SynchronizedStrategy(Strategy<K> queue) {
         this.strategy = queue;
     }
 

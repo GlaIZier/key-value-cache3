@@ -49,7 +49,7 @@ public class LruStrategyPerformanceTest {
 
     @Test
     public void concurrentLruIsEqualToSynchronous() throws InterruptedException {
-        Strategy<Integer> strategy = new SynchronousStrategy<>(new LruStrategy<>());
+        Strategy<Integer> strategy = new SynchronizedStrategy<>(new LruStrategy<>());
         // don't use latch for these tests
         CountDownLatch countDownLatch = new CountDownLatch(0);
         List<Callable<Object>> evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER, countDownLatch);

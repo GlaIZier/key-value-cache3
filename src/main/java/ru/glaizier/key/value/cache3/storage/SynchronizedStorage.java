@@ -11,14 +11,14 @@ import javax.annotation.concurrent.ThreadSafe;
  * @author GlaIZier
  */
 @ThreadSafe
-public class SynchronousStorage<K, V> implements Storage<K, V> {
+public class SynchronizedStorage<K, V> implements Storage<K, V> {
 
     private final Object lock = new Object();
 
     @GuardedBy("lock")
     private final Storage<K, V> storage;
 
-    public SynchronousStorage(Storage<K, V> storage) {
+    public SynchronizedStorage(Storage<K, V> storage) {
         this.storage = storage;
     }
 

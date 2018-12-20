@@ -23,7 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.SynchronousStorage;
+import ru.glaizier.key.value.cache3.storage.SynchronizedStorage;
 
 /**
  * @author GlaIZier
@@ -60,7 +60,7 @@ public class FileStoragePerformanceTest {
     public void concurrentStorageEfficiency() throws IOException, InterruptedException, ExecutionException {
         List<Callable<Object>> pushTasks = buildPushTasks(1, TASKS_NUMBER + 1, TASKS_NUMBER);
 
-        storage = new SynchronousStorage<>(new FileStorage<>(temporaryFolder.newFolder().toPath()));
+        storage = new SynchronizedStorage<>(new FileStorage<>(temporaryFolder.newFolder().toPath()));
         long start = System.currentTimeMillis();
         executorService.invokeAll(pushTasks);
         // choose randomly a task and print it to disable optimization
@@ -68,7 +68,7 @@ public class FileStoragePerformanceTest {
         log.trace((String.valueOf(storage.getSize())));
         log.trace(storage.get(numberToGet).toString());
         long synchronousStorageDuration = System.currentTimeMillis() - start;
-        log.info("SynchronousStorage's duration: {} ms", synchronousStorageDuration);
+        log.info("SynchronizedStorage's duration: {} ms", synchronousStorageDuration);
 
         storage = new ConfinedFileStorage<>(temporaryFolder.newFolder().toPath());
         start = System.currentTimeMillis();

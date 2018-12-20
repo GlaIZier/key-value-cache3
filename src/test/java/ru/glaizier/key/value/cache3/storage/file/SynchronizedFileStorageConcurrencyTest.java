@@ -4,15 +4,15 @@ import java.io.Serializable;
 import java.nio.file.Path;
 
 import ru.glaizier.key.value.cache3.storage.Storage;
-import ru.glaizier.key.value.cache3.storage.SynchronousStorage;
+import ru.glaizier.key.value.cache3.storage.SynchronizedStorage;
 
 /**
  * @author GlaIZier
  */
-public class SynchronousFileStorageConcurrencyTest extends AbstractFileStorageConcurrencyTest {
+public class SynchronizedFileStorageConcurrencyTest extends AbstractFileStorageConcurrencyTest {
 
     protected <K extends Serializable, V extends Serializable> Storage<K, V> getStorage(Path folder) {
-        return new SynchronousStorage<>(new FileStorage<>(folder));
+        return new SynchronizedStorage<>(new FileStorage<>(folder));
     }
 
     @Override
