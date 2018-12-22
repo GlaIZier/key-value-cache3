@@ -1,15 +1,14 @@
 package ru.glaizier.key.value.cache3.cache;
 
+import ru.glaizier.key.value.cache3.cache.strategy.Strategy;
+import ru.glaizier.key.value.cache3.storage.Storage;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.NotThreadSafe;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.NotThreadSafe;
-
-import ru.glaizier.key.value.cache3.cache.strategy.Strategy;
-import ru.glaizier.key.value.cache3.storage.Storage;
 
 /**
  * Simple cache that updates strategy's statistics on get and put
@@ -49,7 +48,8 @@ public class SimpleCache<K, V> implements Cache<K, V> {
         Objects.requireNonNull(value);
 
         Optional<Map.Entry<K, V>> evicted = Optional.empty();
-        if (isFull()) {
+        // Todo add contains check to key-value-cache 2
+        if (isFull() && !contains(key)) {
             evicted = evict();
         }
 
