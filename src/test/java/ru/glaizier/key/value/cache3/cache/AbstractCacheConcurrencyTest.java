@@ -1,19 +1,27 @@
 package ru.glaizier.key.value.cache3.cache;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.IntStream;
+
+import static org.hamcrest.core.Is.is;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
 import ru.glaizier.key.value.cache3.cache.strategy.Strategy;
-
-import java.util.List;
-import java.util.concurrent.*;
-import java.util.stream.IntStream;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static java.util.stream.Collectors.toList;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 /**
  * @author GlaIZier
@@ -131,15 +139,96 @@ public abstract class AbstractCacheConcurrencyTest {
             future.get();
         }
         IntStream.range(0, TASKS_NUMBER)
-                .forEach(i -> {
-                    assertTrue(cache.get(i).isPresent());
-                });
+            .forEach(i -> assertTrue(cache.get(i).isPresent()));
         IntStream.range(0, TASKS_NUMBER)
-                .forEach(i -> {
-                    assertTrue(cache.evict().isPresent());
-                });
+            .forEach(i -> assertTrue(cache.evict().isPresent()));
         assertFalse(cache.evict().isPresent());
     }
+
+    @Test(timeout = 10_000)
+    // timeout in case of deadlocks
+    public void evict() throws InterruptedException, ExecutionException {
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
+        IntStream.range(0, THREADS_NUMBER).forEach(i -> cache.put(i, i));
+
+        List<Callable<Object>> evictTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    // start simultaneously every iteration
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                cache.evict();
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        List<Future<Object>> futures = executorService.invokeAll(evictTasks);
+
+        // check that there were no exceptions in futures
+        for (Future<Object> future : futures) {
+            future.get();
+        }
+        assertFalse(cache.evict().isPresent());
+    }
+
+    @Test(timeout = 10_000)
+    // timeout in case of deadlocks
+    public void remove() throws InterruptedException, ExecutionException {
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
+        IntStream.range(0, THREADS_NUMBER).forEach(i -> cache.put(i, i));
+
+        List<Callable<Object>> removeTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    // start simultaneously every iteration
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                cache.remove(threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        List<Future<Object>> futures = executorService.invokeAll(removeTasks);
+
+        // check that there were no exceptions in futures
+        for (Future<Object> future : futures) {
+            future.get();
+        }
+        assertFalse(cache.evict().isPresent());
+    }
+
+    @Test(timeout = 10_000)
+    // timeout in case of deadlocks
+    public void get() throws InterruptedException, ExecutionException {
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
+        IntStream.range(0, THREADS_NUMBER).forEach(i -> cache.put(i, i));
+
+        List<Callable<Integer>> getTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Callable<Integer>) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                return cache.get(threadI).orElseThrow(IllegalStateException::new);
+            })
+            .collect(toList());
+
+        List<Future<Integer>> futures = executorService.invokeAll(getTasks);
+
+        for (int i = 0; i < THREADS_NUMBER; i++) {
+            assertThat(futures.get(i).get(), is(i));
+        }
+    }
+
 /*
     @Test(timeout = 10_000)
     // get() and put() simultaneously using latch
