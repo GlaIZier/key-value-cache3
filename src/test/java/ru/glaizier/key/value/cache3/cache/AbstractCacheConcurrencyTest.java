@@ -2,7 +2,9 @@ package ru.glaizier.key.value.cache3.cache;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -10,9 +12,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsNot.not;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -103,11 +107,11 @@ public abstract class AbstractCacheConcurrencyTest {
                 .collect(toList());
     }
 
-    protected abstract Cache<Integer, Integer> getCache();
+    protected abstract Cache<Integer, Integer> getCache(int capacity);
 
     @Before
     public void init() {
-        cache = getCache();
+        cache = getCache(TASKS_NUMBER);
     }
 
     @Test(timeout = 10_000)
@@ -227,6 +231,65 @@ public abstract class AbstractCacheConcurrencyTest {
         for (int i = 0; i < THREADS_NUMBER; i++) {
             assertThat(futures.get(i).get(), is(i));
         }
+    }
+
+    @Test(timeout = 10_000)
+    // timeout in case of deadlocks
+    public void evictPut() throws InterruptedException, ExecutionException {
+        int capacity = TASKS_NUMBER * THREADS_NUMBER * 2;
+        Cache<Integer, Integer> cache = getCache(capacity);
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER * 2);
+        IntStream.range(0, THREADS_NUMBER * TASKS_NUMBER).forEach(i -> cache.put(i + capacity, i + capacity));
+
+        AtomicInteger pushCount = new AtomicInteger(0);
+        AtomicInteger evictCount = new AtomicInteger(0);
+        List<Callable<Object>> putEvictTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                IntStream.range(0, TASKS_NUMBER)
+                    .forEach(taskI -> {
+                        Thread.yield();
+                        cache.put(threadI * 10 + taskI, threadI * 10 + taskI);
+                        pushCount.incrementAndGet();
+                    });
+            })
+            .map(Executors::callable)
+            .collect(toList());
+
+        List<Callable<Object>> evictTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                IntStream.range(0, TASKS_NUMBER)
+                    .forEach(taskI -> {
+                        Thread.yield();
+                        cache.evict();
+                        evictCount.incrementAndGet();
+                    });
+            })
+            .map(Executors::callable)
+            .collect(toList());
+
+        putEvictTasks.addAll(evictTasks);
+        Collections.shuffle(putEvictTasks);
+        List<Future<Object>> futures = executorService.invokeAll(putEvictTasks);
+
+        for (Future<Object> future : futures) {
+            future.get();
+        }
+        for (int i = 0; i < THREADS_NUMBER * TASKS_NUMBER; i++) {
+            assertThat(cache.evict(), not(Optional.empty()));
+        }
+        assertThat(cache.evict(), is(Optional.empty()));
     }
 
 /*

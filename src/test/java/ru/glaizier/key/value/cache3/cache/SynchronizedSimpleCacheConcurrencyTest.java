@@ -9,7 +9,7 @@ import ru.glaizier.key.value.cache3.storage.memory.MemoryStorage;
 public class SynchronizedSimpleCacheConcurrencyTest extends AbstractCacheConcurrencyTest {
 
     @Override
-    protected Cache<Integer, Integer> getCache() {
-        return new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), AbstractCacheConcurrencyTest.TASKS_NUMBER));
+    protected Cache<Integer, Integer> getCache(int capacity) {
+        return new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), capacity));
     }
 }
