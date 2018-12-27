@@ -240,7 +240,6 @@ public abstract class AbstractCacheConcurrencyTest {
         int capacity = TASKS_NUMBER * THREADS_NUMBER * 2;
         Cache<Integer, Integer> cache = getCache(capacity);
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER * 2);
-//        IntStream.range(0, THREADS_NUMBER * TASKS_NUMBER).forEach(i -> cache.put(i + capacity, i + capacity));
 
         List<Callable<Object>> putEvictTasks = IntStream.range(0, THREADS_NUMBER)
             .mapToObj(threadI -> (Runnable) () -> {
@@ -288,6 +287,67 @@ public abstract class AbstractCacheConcurrencyTest {
         }
         assertThat(cache.getSize(), is(evictMisses.get()));
         for (int i = 0; i < evictMisses.get(); i++) {
+            assertThat(cache.evict(), not(Optional.empty()));
+        }
+        assertThat(cache.evict(), is(Optional.empty()));
+    }
+
+    @Test(timeout = 10_000)
+    public void evictRemove() throws InterruptedException, ExecutionException {
+        int capacity = TASKS_NUMBER * THREADS_NUMBER * 2;
+        Cache<Integer, Integer> cache = getCache(capacity);
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER * 2);
+        IntStream.range(0, THREADS_NUMBER * TASKS_NUMBER * 2).forEach(i -> cache.put(i, i));
+
+        AtomicInteger removeMisses = new AtomicInteger();
+        List<Callable<Object>> removeEvictTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                IntStream.range(0, TASKS_NUMBER)
+                    .forEach(taskI -> {
+                        Thread.yield();
+                        Optional<Integer> removed = cache.remove(threadI * 10 + taskI);
+                        if (!removed.isPresent())
+                            removeMisses.incrementAndGet();
+                    });
+            })
+            .map(Executors::callable)
+            .collect(toList());
+
+        AtomicInteger evictMisses = new AtomicInteger();
+        List<Callable<Object>> evictTasks = IntStream.range(0, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                IntStream.range(0, TASKS_NUMBER)
+                    .forEach(taskI -> {
+                        Thread.yield();
+                        Optional<Map.Entry<Integer, Integer>> evict = cache.evict();
+                        if (!evict.isPresent())
+                            evictMisses.incrementAndGet();
+                    });
+            })
+            .map(Executors::callable)
+            .collect(toList());
+
+        removeEvictTasks.addAll(evictTasks);
+        Collections.shuffle(removeEvictTasks);
+        List<Future<Object>> futures = executorService.invokeAll(removeEvictTasks);
+
+        for (Future<Object> future : futures) {
+            future.get();
+        }
+        assertThat(cache.getSize(), is(evictMisses.get() + removeMisses.get()));
+        for (int i = 0; i < evictMisses.get() + removeMisses.get(); i++) {
             assertThat(cache.evict(), not(Optional.empty()));
         }
         assertThat(cache.evict(), is(Optional.empty()));
