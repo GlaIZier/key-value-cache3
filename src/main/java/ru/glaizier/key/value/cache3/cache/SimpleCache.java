@@ -48,7 +48,6 @@ public class SimpleCache<K, V> implements Cache<K, V> {
         Objects.requireNonNull(value);
 
         Optional<Map.Entry<K, V>> evicted = Optional.empty();
-        // Todo add contains check to key-value-cache 2
         if (isFull() && !contains(key)) {
             evicted = evict();
         }
