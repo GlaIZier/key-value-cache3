@@ -4,6 +4,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.concurrent.NotThreadSafe;
 import java.io.Serializable;
 import java.util.*;
+import java.util.stream.IntStream;
 
 import static java.lang.String.format;
 
@@ -64,12 +65,19 @@ public class MultiLevelCache<K extends Serializable, V extends Serializable> imp
     }
 
     /**
-     * Evicts consequently from levels by putting evicted elements to other levels
+     * It evicts consequently from levels by putting evicted elements to other levels starting with first non-empty level
      * l0 -> ev0 + l1 -> ev1 + l2 -> el2 ...
      */
     @Override
     public Optional<Map.Entry<K, V>> evict() {
-        return levels.get(0).evict().flatMap(firstEvicted -> putRec(firstEvicted.getKey(), firstEvicted.getValue(), 1));
+        Optional<Integer> levelIndexToEvict = IntStream.range(0, levels.size())
+                .filter(i -> !levels.get(i).isEmpty())
+                .mapToObj(Integer::valueOf)
+                .findFirst();
+
+        return levelIndexToEvict
+                .flatMap(levelIndex -> levels.get(levelIndex).evict())
+                .flatMap(firstEvicted -> putRec(firstEvicted.getKey(), firstEvicted.getValue(), levelIndexToEvict.get() + 1));
     }
 
     /**
@@ -87,7 +95,7 @@ public class MultiLevelCache<K extends Serializable, V extends Serializable> imp
      * Puts recursively the element to the start level and gets the evicted from the last level
      */
     private Optional<Map.Entry<K, V>> putRec(K key, V value, int curLevelIndex) {
-        if (curLevelIndex == levels.size())
+        if (curLevelIndex >= levels.size())
             return Optional.of(new AbstractMap.SimpleImmutableEntry<>(key, value));
         Optional<Map.Entry<K, V>> curEvictedOpt = levels.get(curLevelIndex).put(key, value);
         return curEvictedOpt.flatMap(curEvicted -> putRec(curEvicted.getKey(), curEvicted.getValue(), curLevelIndex + 1));

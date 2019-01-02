@@ -1,31 +1,21 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static java.util.stream.Collectors.toList;
-import java.util.AbstractMap;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
-import java.util.stream.IntStream;
-
-import static org.hamcrest.core.Is.is;
-import static org.hamcrest.core.IsNot.not;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.stream.IntStream;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
+import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsNot.not;
+import static org.junit.Assert.*;
 
 /**
  * @author GlaIZier
@@ -111,7 +101,7 @@ public abstract class AbstractCacheConcurrencyTest {
     @Test(timeout = 10_000)
     // timeout in case of deadlocks
     // put every element with taskI simultaneously using CyclicBarrier
-    public void push() throws InterruptedException, ExecutionException {
+    public void put() throws InterruptedException, ExecutionException {
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
         List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
                 .mapToObj(threadI -> (Runnable) () ->

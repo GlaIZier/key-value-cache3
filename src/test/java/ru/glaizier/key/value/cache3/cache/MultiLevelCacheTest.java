@@ -123,10 +123,15 @@ public class MultiLevelCacheTest {
 
 
     @Test
-    public void notEvictIfFirstLevelEmpty() {
+    public void shiftElementOnEvict() {
+        // <> <> - <> <>
         assertThat(c.evict(), is(Optional.empty()));
         c.put(1, "1");
+        // 1 <> - <> <>
         assertThat(c.evict(), is(Optional.empty()));
+        // <> <> - <1> <>
+        assertThat(c.evict(), is(Optional.of(new AbstractMap.SimpleImmutableEntry<>(1, "1"))));
+        // <> <> - <> <>
         assertThat(c.evict(), is(Optional.empty()));
     }
 
@@ -150,7 +155,6 @@ public class MultiLevelCacheTest {
         // evict to the second
         // <> <> - 3 2
         assertThat(c.evict(), is(Optional.of(new AbstractMap.SimpleImmutableEntry<>(1, "1"))));
-        assertThat(c.evict(), is(Optional.empty()));
         c.put(4, "4");
         c.put(5, "5");
         // 5 4 - 3 2
@@ -158,6 +162,8 @@ public class MultiLevelCacheTest {
         // <> 5 - 4 3
         assertThat(c.evict(), is(Optional.of(new AbstractMap.SimpleImmutableEntry<>(3, "3"))));
         // <> <> - 5 4
+        assertThat(c.evict(), is(Optional.of(new AbstractMap.SimpleImmutableEntry<>(4, "4"))));
+        assertThat(c.evict(), is(Optional.of(new AbstractMap.SimpleImmutableEntry<>(5, "5"))));
         assertThat(c.evict(), is(Optional.empty()));
     }
 
