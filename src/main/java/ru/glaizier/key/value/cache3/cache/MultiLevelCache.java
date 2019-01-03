@@ -1,12 +1,18 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.NotThreadSafe;
+import static java.lang.String.format;
 import java.io.Serializable;
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
-import static java.lang.String.format;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.NotThreadSafe;
 
 /**
  * Multi level cache implementation which evicts elements from first (top) levels to below ones.
@@ -72,12 +78,12 @@ public class MultiLevelCache<K extends Serializable, V extends Serializable> imp
     public Optional<Map.Entry<K, V>> evict() {
         Optional<Integer> levelIndexToEvict = IntStream.range(0, levels.size())
                 .filter(i -> !levels.get(i).isEmpty())
-                .mapToObj(Integer::valueOf)
+                .boxed()
                 .findFirst();
 
         return levelIndexToEvict
                 .flatMap(levelIndex -> levels.get(levelIndex).evict())
-                .flatMap(firstEvicted -> putRec(firstEvicted.getKey(), firstEvicted.getValue(), levelIndexToEvict.get() + 1));
+                .flatMap(firstEvicted -> putRec(firstEvicted.getKey(), firstEvicted.getValue(), levelIndexToEvict.orElseThrow(IllegalStateException::new) + 1));
     }
 
     /**

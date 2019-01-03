@@ -1,13 +1,29 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import org.junit.Ignore;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
+
+import static org.hamcrest.core.Is.is;
+import static org.hamcrest.core.IsNot.not;
+import static org.junit.Assert.assertThat;
+
 import ru.glaizier.key.value.cache3.cache.strategy.ConcurrentLruStrategy;
 import ru.glaizier.key.value.cache3.storage.memory.MemoryStorage;
 
 /**
  * @author GlaIZier
  */
-@Ignore
 // Fixme
 public class SynchronizedMultiLevelCacheConcurrencyTest extends AbstractCacheConcurrencyTest {
 
@@ -16,5 +32,67 @@ public class SynchronizedMultiLevelCacheConcurrencyTest extends AbstractCacheCon
         SynchronizedCache<Integer, Integer> level1 = new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), capacity / 2));
         SynchronizedCache<Integer, Integer> level2 = new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), capacity / 2));
         return new SynchronizedCache<>(new MultiLevelCache<>(level1, level2));
+    }
+
+    @Override
+    public void evictPut() throws InterruptedException, ExecutionException {
+        Cache<Integer, Integer> cache = getCache(THREADS_NUMBER);
+        CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
+        // <THREADS_NUMBER / 2> - <>
+        IntStream.range(0, THREADS_NUMBER / 2).forEach(i -> cache.put(i, i));
+
+        List<Callable<Object>> putEvictTasks = IntStream.range(THREADS_NUMBER / 2, THREADS_NUMBER)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                cache.put(threadI, threadI);
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        // + THREADS_NUMBER / 2
+
+        AtomicInteger evictMisses = new AtomicInteger();
+        List<Callable<Object>> evictTasks = IntStream.range(0, THREADS_NUMBER / 2)
+            .mapToObj(threadI -> (Runnable) () -> {
+                try {
+                    barrier.await(1, SECONDS);
+                    Thread.sleep((long) (Math.random() * 10));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                Thread.yield();
+                Optional<Map.Entry<Integer, Integer>> evict = cache.evict();
+                if (!evict.isPresent()) {
+                    evictMisses.incrementAndGet();
+                }
+            })
+            .map(Executors::callable)
+            .collect(toList());
+        // - (THREADS_NUMBER / 2 - evictMisses)
+
+        putEvictTasks.addAll(evictTasks);
+        Collections.shuffle(putEvictTasks);
+        List<Future<Object>> futures = executorService.invokeAll(putEvictTasks);
+        // After all operations: from <5> - <5> (5 misses) to <> - <5> (0 misses)
+
+        for (Future<Object> future : futures) {
+            future.get();
+        }
+
+        for (int i = 0; i < THREADS_NUMBER / 2 + evictMisses.get(); i++) {
+            assertThat(cache.evict(), not(Optional.empty()));
+        }
+        assertThat(cache.evict(), is(Optional.empty()));
+        assertThat(cache.isEmpty(), is(true));
+    }
+
+    @Override
+    public void evictPutRemove() throws InterruptedException, ExecutionException {
+
     }
 }
