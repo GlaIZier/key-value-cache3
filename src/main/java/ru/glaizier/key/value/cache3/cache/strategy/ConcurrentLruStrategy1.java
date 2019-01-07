@@ -6,9 +6,14 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
 
 /**
  * @author GlaIZier
@@ -19,19 +24,32 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
     @GuardedBy("useLock")
     private final Queue<K> q = new ConcurrentLinkedQueue<>();
 
-    private final ConcurrentMap<K, Boolean> keys = new ConcurrentHashMap<K, Boolean>();
+    private final ConcurrentMap<K, Boolean> keys = new ConcurrentHashMap<>();
+
+    private final ConcurrentMap<K, Operation> running = new ConcurrentHashMap<>();
 
     @Override
-    // smart locking or help with operations
     public Optional<K> evict() {
+        K toEvict = q.peek();
+        if (toEvict == null)
+            return empty();
+
+        UUID hash = UUID.randomUUID();
         while (true) {
-            K evicted = q.peek();
-            // lock
-            return Optional.ofNullable(q.poll());
-
+            Operation operation = running.computeIfAbsent(toEvict, (k) -> new EvictOperation(toEvict, hash));
+            if (operation.hash.equals(hash)) {
+                // execute the target task
+                while (true) {
+                    if (operation.execute())
+                        return of(toEvict);
+                }
+            } else {
+                // help to execute another task
+                operation.execute();
+            }
         }
-
     }
+
 
     /**
      * O(1)
@@ -58,5 +76,49 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
                 if (!q.remove(key))
                     break;
         return exists != null;
+    }
+
+    private abstract class Operation {
+        protected final K key;
+        private final UUID hash;
+        protected final AtomicBoolean firstStarted = new AtomicBoolean(false);
+        protected final AtomicBoolean firstDone = new AtomicBoolean(false);
+        protected final AtomicBoolean secondStarted = new AtomicBoolean(false);
+        protected final AtomicBoolean secondDone = new AtomicBoolean(false);
+        protected final AtomicBoolean done = new AtomicBoolean(false);
+
+        private Operation(K key, UUID hash) {
+            this.key = key;
+            this.hash = hash;
+        }
+
+        public abstract boolean execute();
+    }
+
+    private class EvictOperation extends Operation {
+        private EvictOperation(K key, UUID hash) {
+            super(key, hash);
+        }
+
+        @Override
+        public boolean execute() {
+            if (done.get())
+                return true;
+            if (firstStarted.compareAndSet(false, true)) {
+                q.remove(key);
+                firstDone.set(true);
+            }
+            if (secondStarted.compareAndSet(false, true)) {
+                keys.put(key, false);
+                secondDone.set(true);
+            }
+            if (firstDone.get() && secondDone.get()) {
+                if (done.compareAndSet(false, true)) {
+                    running.remove(key);
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }
