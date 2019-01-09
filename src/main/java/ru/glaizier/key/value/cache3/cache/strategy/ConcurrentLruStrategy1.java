@@ -42,7 +42,7 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
             if (toEvict == null)
                 return empty();
 
-            Operation operation = running.computeIfAbsent(toEvict, (k) -> new PeekOperation(toEvict, peekHash));
+            Operation operation = running.computeIfAbsent(toEvict, (toEvictKey) -> new PeekOperation(toEvictKey, peekHash));
             if (operation.hash.equals(peekHash)) {
                 // if true then we found not duplicated key (key to peek)
                 if (operation.execute())
@@ -55,7 +55,7 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
 
         UUID evictHash = UUID.randomUUID();
         while (true) {
-            Operation operation = running.computeIfAbsent(toEvict, (k) -> new EvictOperation(toEvict, evictHash));
+            Operation operation = running.computeIfAbsent(toEvict, (toEvictKey) -> new EvictOperation(toEvictKey, evictHash));
             if (operation.hash.equals(evictHash)) {
                 // execute the target task
                 while (true) {
