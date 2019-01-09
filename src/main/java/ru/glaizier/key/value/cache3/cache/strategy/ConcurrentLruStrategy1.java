@@ -1,8 +1,7 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -12,8 +11,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static java.util.Optional.empty;
-import static java.util.Optional.of;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
 
 /**
  * @author GlaIZier
@@ -76,10 +76,21 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
     @Override
     public boolean use(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
-        q.add(key);
-        Boolean prev = keys.put(key, true);
 
-        return prev != null;
+        UUID evictHash = UUID.randomUUID();
+        while (true) {
+            Operation operation = running.computeIfAbsent(key, (k) -> new UseOperation(key, evictHash));
+            if (operation.hash.equals(evictHash)) {
+                // execute the target task
+                while (true) {
+                    if (operation.execute())
+                        return ((UseOperation)operation).getResult();
+                }
+            } else {
+                // help to execute another task
+                operation.execute();
+            }
+        }
     }
 
     /**
@@ -171,6 +182,8 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
     }
 
     private class UseOperation extends Operation {
+        private final AtomicBoolean result = new AtomicBoolean(false);
+
         private UseOperation(K key, UUID hash) {
             super(key, hash);
         }
@@ -180,11 +193,13 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
             if (done.get())
                 return true;
             if (firstStarted.compareAndSet(false, true)) {
-                q.remove(key);
+                q.add(key);
                 firstDone.set(true);
             }
             if (secondStarted.compareAndSet(false, true)) {
-                keys.put(key, false);
+                Boolean prevKey = keys.put(key, true);
+                if (Boolean.TRUE.equals(prevKey))
+                    result.set(true);
                 secondDone.set(true);
             }
             if (firstDone.get() && secondDone.get()) {
@@ -194,6 +209,10 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
                 }
             }
             return false;
+        }
+
+        private boolean getResult() {
+            return result.get();
         }
     }
 }
