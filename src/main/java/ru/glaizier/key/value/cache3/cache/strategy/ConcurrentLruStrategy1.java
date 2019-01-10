@@ -2,6 +2,7 @@ package ru.glaizier.key.value.cache3.cache.strategy;
 
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
+import static java.util.Optional.ofNullable;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -15,38 +16,47 @@ import javax.annotation.Nonnull;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
+import ru.glaizier.key.value.cache3.util.Entry;
+
 /**
  * @author GlaIZier
  */
 @ThreadSafe
 public class ConcurrentLruStrategy1<K> implements Strategy<K> {
 
+    private static final int FIRST_VERSION = 1;
+
     @GuardedBy("running")
     // There can be duplicates in q. This is done to speed up use operation
-    private final Queue<K> q = new ConcurrentLinkedQueue<>();
+    private final Queue<Entry<K, Integer>> q = new ConcurrentLinkedQueue<>();
 
-    // Since there can be duplicates in the q, this map is used to show if a key is present in q.
-    // null - not present (q contains duplicate, but this value has already been evicted). True - present
-    private final ConcurrentMap<K, Boolean> keys = new ConcurrentHashMap<>();
+    // Since there can be duplicates in the q, this map is used to show if a key is present in the queue.
+    // null - not present (q contains duplicate, but this value has already been evicted). Integer - the last index of this key.
+    // when we peek the element from the queue, we compare its integer and an integer here to decide whether we peeked the last element.
+    // <1-3> -> <2-2> -> <1-1>. The first candidate is <1-1>, but we have it later (<1-3>: keysToVersion contains 1:3), so it's not the right candidate
+    private final ConcurrentMap<K, Integer> keysToVersion = new ConcurrentHashMap<>();
 
-    // Crucial map to guard simultaneous update of q and keys
+    // Crucial map to guard simultaneous update of q and keysToVersion
     private final ConcurrentMap<K, Operation> running = new ConcurrentHashMap<>();
 
     @Override
     public Optional<K> evict() {
-        K toEvict;
         UUID peekHash = UUID.randomUUID();
+        Entry<K, Integer> peeked;
         // get not duplicated key
         while (true) {
-            toEvict = q.peek();
-            if (toEvict == null)
+            Entry<K, Integer> currentPeeked = q.peek();
+            if (currentPeeked == null)
                 return empty();
 
-            Operation operation = running.computeIfAbsent(toEvict, (toEvictKey) -> new PeekOperation(toEvictKey, peekHash));
+            Operation operation = running
+                .computeIfAbsent(currentPeeked.key, (peekedLocal) -> new PeekOperation(currentPeeked, peekHash));
             if (operation.hash.equals(peekHash)) {
                 // if true then we found not duplicated key (key to peek)
-                if (operation.execute())
+                if (operation.execute()) {
+                    peeked = currentPeeked;
                     break;
+                }
             } else {
                 // help to execute another task
                 operation.execute();
@@ -55,12 +65,14 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
 
         UUID evictHash = UUID.randomUUID();
         while (true) {
-            Operation operation = running.computeIfAbsent(toEvict, (toEvictKey) -> new EvictOperation(toEvictKey, evictHash));
+            Operation operation = running
+                .computeIfAbsent(peeked.key, (peekedLocal) -> new EvictOperation(peeked, evictHash));
             if (operation.hash.equals(evictHash)) {
                 // execute the target task
                 while (true) {
-                    if (operation.execute())
-                        return of(toEvict);
+                    if (operation.execute()) {
+                        return of(peeked.key);
+                    }
                 }
             } else {
                 // help to execute another task
@@ -79,7 +91,9 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
 
         UUID evictHash = UUID.randomUUID();
         while (true) {
-            Operation operation = running.computeIfAbsent(key, (k) -> new UseOperation(key, evictHash));
+            Operation operation = running.computeIfAbsent(key, (k) -> new UseOperation(
+                new Entry<>(key, ofNullable(keysToVersion.get(key)).map(version -> version + 1).orElse(FIRST_VERSION)),
+                evictHash));
             if (operation.hash.equals(evictHash)) {
                 // execute the target task
                 while (true) {
@@ -100,16 +114,26 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
     public boolean remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
 
-        Boolean exists = keys.remove(key);
-        if (exists != null)
-            while (true)
-                if (!q.remove(key))
-                    break;
-        return exists != null;
+        UUID removeHash = UUID.randomUUID();
+        while (true) {
+            Operation operation = running.computeIfAbsent(key, (k) -> new RemoveOperation(
+                new Entry<>(key, ofNullable(keysToVersion.get(key)).orElse(FIRST_VERSION)), removeHash));
+            if (operation.hash.equals(removeHash)) {
+                // execute the target task
+                while (true) {
+                    if (operation.execute()) {
+                        return ((RemoveOperation) operation).getResult();
+                    }
+                }
+            } else {
+                // help to execute another task
+                operation.execute();
+            }
+        }
     }
 
     private abstract class Operation {
-        protected final K key;
+        protected final Entry<K, Integer> keyToVersion;
         private final UUID hash;
         // Todo refactor to the list of operations?
         protected final AtomicBoolean firstStarted = new AtomicBoolean(false);
@@ -118,8 +142,8 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
         protected final AtomicBoolean secondDone = new AtomicBoolean(false);
         protected final AtomicBoolean done = new AtomicBoolean(false);
 
-        private Operation(K key, UUID hash) {
-            this.key = key;
+        private Operation(Entry<K, Integer> keyToVersion, UUID hash) {
+            this.keyToVersion = keyToVersion;
             this.hash = hash;
         }
 
@@ -132,31 +156,31 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
     private class PeekOperation extends Operation {
         private final AtomicBoolean isSuccessful = new AtomicBoolean(false);
 
-        private PeekOperation(K key, UUID hash) {
-            super(key, hash);
+        private PeekOperation(Entry<K, Integer> keyToVersion, UUID hash) {
+            super(keyToVersion, hash);
         }
 
         @Override
         public boolean execute() {
             if (firstStarted.compareAndSet(false, true)) {
-                if (keys.get(key) != null) {
+                if (keyToVersion.value.equals(keysToVersion.get(keyToVersion.key))) {
                     // this peeked key is what we need
                     isSuccessful.set(true);
                 } else {
                     // this key in q is a duplicate and we need to remove it
-                    q.remove(key);
+                    q.remove(keyToVersion);
                     isSuccessful.set(false);
                 }
                 done.set(true);
-                running.remove(key);
+                running.remove(keyToVersion.key);
             }
             return isSuccessful.get();
         }
     }
 
     private class EvictOperation extends Operation {
-        private EvictOperation(K key, UUID hash) {
-            super(key, hash);
+        private EvictOperation(Entry<K, Integer> keyToVersion, UUID hash) {
+            super(keyToVersion, hash);
         }
 
         @Override
@@ -164,16 +188,16 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
             if (done.get())
                 return true;
             if (firstStarted.compareAndSet(false, true)) {
-                q.remove(key);
+                q.remove(keyToVersion);
                 firstDone.set(true);
             }
             if (secondStarted.compareAndSet(false, true)) {
-                keys.remove(key);
+                keysToVersion.remove(keyToVersion.key);
                 secondDone.set(true);
             }
             if (firstDone.get() && secondDone.get()) {
                 if (done.compareAndSet(false, true)) {
-                    running.remove(key);
+                    running.remove(keyToVersion.key);
                     return true;
                 }
             }
@@ -182,10 +206,11 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
     }
 
     private class UseOperation extends Operation {
+        // Todo move to a separate base class
         private final AtomicBoolean result = new AtomicBoolean(false);
 
-        private UseOperation(K key, UUID hash) {
-            super(key, hash);
+        private UseOperation(Entry<K, Integer> keyToVersion, UUID hash) {
+            super(keyToVersion, hash);
         }
 
         @Override
@@ -193,18 +218,56 @@ public class ConcurrentLruStrategy1<K> implements Strategy<K> {
             if (done.get())
                 return true;
             if (firstStarted.compareAndSet(false, true)) {
-                q.add(key);
+                q.add(keyToVersion);
                 firstDone.set(true);
             }
             if (secondStarted.compareAndSet(false, true)) {
-                Boolean prevKey = keys.put(key, true);
-                if (Boolean.TRUE.equals(prevKey))
+                Integer prevVersion = keysToVersion.put(keyToVersion.key, keyToVersion.value);
+                if (prevVersion != null)
                     result.set(true);
                 secondDone.set(true);
             }
             if (firstDone.get() && secondDone.get()) {
                 if (done.compareAndSet(false, true)) {
-                    running.remove(key);
+                    running.remove(keyToVersion.key);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean getResult() {
+            return result.get();
+        }
+    }
+
+    private class RemoveOperation extends Operation {
+        private final AtomicBoolean result = new AtomicBoolean(false);
+
+        private RemoveOperation(Entry<K, Integer> keyToVersion, UUID hash) {
+            super(keyToVersion, hash);
+        }
+
+        @Override
+        public boolean execute() {
+            if (done.get()) {
+                return true;
+            }
+            if (firstStarted.compareAndSet(false, true)) {
+                Integer version = keysToVersion.remove(keyToVersion.key);
+                result.set(version != null);
+                firstDone.set(true);
+            }
+            if (secondStarted.compareAndSet(false, true)) {
+                for (Integer currentVersion = keyToVersion.value; currentVersion > 0; currentVersion--) {
+                    if (!q.remove(new Entry<>(keyToVersion.key, currentVersion)))
+                        break;
+                }
+                secondDone.set(true);
+            }
+            if (firstDone.get() && secondDone.get()) {
+                if (done.compareAndSet(false, true)) {
+                    running.remove(keyToVersion.key);
                     return true;
                 }
             }
