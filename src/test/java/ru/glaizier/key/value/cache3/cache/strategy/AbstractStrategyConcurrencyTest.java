@@ -111,7 +111,7 @@ public abstract class AbstractStrategyConcurrencyTest {
     // put every element with taskI simultaneously using CyclicBarrier
     public void use() throws InterruptedException, ExecutionException {
         CyclicBarrier barrier = new CyclicBarrier(THREADS_NUMBER);
-        List<Callable<Object>> pushTasks = IntStream.range(0, THREADS_NUMBER)
+        List<Callable<Object>> useTasks = IntStream.range(0, THREADS_NUMBER)
             .mapToObj(threadI -> (Runnable) () ->
                 IntStream.range(0, TASKS_NUMBER)
                     .forEach(taskI -> {
@@ -128,7 +128,7 @@ public abstract class AbstractStrategyConcurrencyTest {
             )
             .map(Executors::callable)
             .collect(toList());
-        List<Future<Object>> futures = executorService.invokeAll(pushTasks);
+        List<Future<Object>> futures = executorService.invokeAll(useTasks);
 
         // check that there were no exceptions in futures
         for (Future<Object> future : futures) {
