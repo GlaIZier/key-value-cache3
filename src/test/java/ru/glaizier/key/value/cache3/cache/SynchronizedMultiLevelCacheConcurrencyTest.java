@@ -1,25 +1,21 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static java.util.stream.Collectors.toList;
+import ru.glaizier.key.value.cache3.cache.strategy.ConcurrentLinkedQueueLruStrategy;
+import ru.glaizier.key.value.cache3.storage.memory.MemoryStorage;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsNot.not;
 import static org.junit.Assert.assertThat;
-
-import ru.glaizier.key.value.cache3.cache.strategy.ConcurrentLruStrategy;
-import ru.glaizier.key.value.cache3.storage.memory.MemoryStorage;
 
 /**
  * @author GlaIZier
@@ -28,8 +24,8 @@ public class SynchronizedMultiLevelCacheConcurrencyTest extends AbstractCacheCon
 
     @Override
     protected Cache<Integer, Integer> getCache(int capacity) {
-        SynchronizedCache<Integer, Integer> level1 = new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), capacity / 2));
-        SynchronizedCache<Integer, Integer> level2 = new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), capacity / 2));
+        SynchronizedCache<Integer, Integer> level1 = new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLinkedQueueLruStrategy<>(), capacity / 2));
+        SynchronizedCache<Integer, Integer> level2 = new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLinkedQueueLruStrategy<>(), capacity / 2));
         return new SynchronizedCache<>(new MultiLevelCache<>(level1, level2));
     }
 

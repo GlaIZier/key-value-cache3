@@ -19,6 +19,9 @@ public class LruStrategy<K> implements Strategy<K> {
      */
     private final Set<K> queue = new LinkedHashSet<>();
 
+    /**
+     * O(1)
+     */
     @Override
     public Optional<K> evict() {
         // Find first element for eviction and remove it if it was found
@@ -30,6 +33,9 @@ public class LruStrategy<K> implements Strategy<K> {
                 });
     }
 
+    /**
+     * O(1)
+     */
     @Override
     public boolean use(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
@@ -38,6 +44,9 @@ public class LruStrategy<K> implements Strategy<K> {
         return contained;
     }
 
+    /**
+     * O(1)
+     */
     @Override
     public boolean remove(@Nonnull K key) {
         Objects.requireNonNull(key, "key");

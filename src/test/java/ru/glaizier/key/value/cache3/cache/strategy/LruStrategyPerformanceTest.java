@@ -1,6 +1,11 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.lang.invoke.MethodHandles;
 import java.util.Collections;
 import java.util.List;
@@ -9,18 +14,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.buildEvictTasks;
-import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.buildRemoveTasks;
-import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.buildUseTasks;
+import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.*;
 
 /**
  * @author GlaIZier
@@ -67,7 +65,7 @@ public class LruStrategyPerformanceTest {
         long synchronousStrategyDuration = System.currentTimeMillis() - start;
         log.info("SynchronousLruStrategy's duration: {} ms", synchronousStrategyDuration);
 
-        strategy = new ConcurrentLruStrategy<>();
+        strategy = new ConcurrentLinkedQueueLruStrategy<>();
         evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER, countDownLatch);
         useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
         removeTasks = buildRemoveTasks(strategy, TASKS_NUMBER, countDownLatch);
@@ -80,7 +78,7 @@ public class LruStrategyPerformanceTest {
         // choose randomly a task and print it to disable optimization
         strategy.evict();
         long concurrentStrategyDuration = System.currentTimeMillis() - start;
-        log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategyDuration);
+        log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentStrategyDuration);
 
         // just assert that
         assertThat((double) concurrentStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
@@ -118,7 +116,7 @@ public class LruStrategyPerformanceTest {
         long synchronousStrategyDuration = System.currentTimeMillis() - start;
         log.info("SynchronousLruStrategy's duration: {} ms", synchronousStrategyDuration);
 
-        strategy = new ConcurrentLruStrategy<>();
+        strategy = new ConcurrentLinkedQueueLruStrategy<>();
         evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
         useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
         evictUseRemoveTasks.addAll(useTasks);
@@ -129,7 +127,7 @@ public class LruStrategyPerformanceTest {
         // choose randomly a task and print it to disable optimization
         strategy.evict();
         long concurrentStrategyDuration = System.currentTimeMillis() - start;
-        log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategyDuration);
+        log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentStrategyDuration);
 
         // just assert that
 //        assertThat((double) concurrentStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));

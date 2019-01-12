@@ -1,6 +1,6 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import ru.glaizier.key.value.cache3.cache.strategy.ConcurrentLruStrategy;
+import ru.glaizier.key.value.cache3.cache.strategy.ConcurrentLinkedQueueLruStrategy;
 import ru.glaizier.key.value.cache3.storage.memory.MemoryStorage;
 
 /**
@@ -10,6 +10,6 @@ public class SynchronizedSimpleCacheConcurrencyTest extends AbstractCacheConcurr
 
     @Override
     protected Cache<Integer, Integer> getCache(int capacity) {
-        return new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLruStrategy<>(), capacity));
+        return new SynchronizedCache<>(new SimpleCache<>(new MemoryStorage<>(), new ConcurrentLinkedQueueLruStrategy<>(), capacity));
     }
 }

@@ -1,20 +1,18 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-
 /**
  * @author GlaIZier
  */
 @ThreadSafe
-// Todo come up with an idea how to use Navigable map to speed it up
-public class ConcurrentLruStrategy<K> implements Strategy<K> {
+public class ConcurrentLinkedQueueLruStrategy<K> implements Strategy<K> {
 
     @GuardedBy("useLock")
     private final Queue<K> q = new ConcurrentLinkedQueue<>();
@@ -30,7 +28,6 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
      * O(n)
      */
     @Override
-    // Todo try to introduce Atomic reference?
     public boolean use(@Nonnull K key) {
         Objects.requireNonNull(key, "key");
 
