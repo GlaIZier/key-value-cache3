@@ -1,8 +1,10 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
-import static java.util.Optional.empty;
-import static java.util.Optional.of;
-import static java.util.Optional.ofNullable;
+import ru.glaizier.key.value.cache3.util.Entry;
+
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -12,17 +14,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
-
-import ru.glaizier.key.value.cache3.util.Entry;
+import static java.util.Optional.*;
 
 /**
  * @author GlaIZier
  */
 @ThreadSafe
-public class ConcurrentLruStrategy1<K> implements Strategy<K> {
+public class ConcurrentLruStrategy<K> implements Strategy<K> {
 
     private static final int FIRST_VERSION = 1;
 
