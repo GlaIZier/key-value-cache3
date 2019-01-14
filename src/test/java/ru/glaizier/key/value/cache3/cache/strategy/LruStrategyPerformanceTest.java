@@ -1,11 +1,6 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import static java.util.concurrent.TimeUnit.SECONDS;
 import java.lang.invoke.MethodHandles;
 import java.util.Collections;
 import java.util.List;
@@ -14,16 +9,22 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.*;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.buildEvictTasks;
+import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.buildRemoveTasks;
+import static ru.glaizier.key.value.cache3.cache.strategy.AbstractStrategyConcurrencyTest.buildUseTasks;
 
 /**
  * @author GlaIZier
  */
-// Fixme
 public class LruStrategyPerformanceTest {
 
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -47,7 +48,7 @@ public class LruStrategyPerformanceTest {
     }
 
     @Test
-    public void concurrentLruIsEqualToSynchronous() throws InterruptedException {
+    public void strategiesAreEqualInPerformanceWhenLoadIsSpreadBetweenAllMethods() throws InterruptedException {
         Strategy<Integer> strategy = new SynchronizedStrategy<>(new LruStrategy<>());
         // don't use latch for these tests
         CountDownLatch countDownLatch = new CountDownLatch(0);
@@ -77,11 +78,11 @@ public class LruStrategyPerformanceTest {
         executorService.invokeAll(evictUseRemoveTasks);
         // choose randomly a task and print it to disable optimization
         strategy.evict();
-        long concurrentStrategyDuration = System.currentTimeMillis() - start;
-        log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentStrategyDuration);
+        long concurrentLinkedQueueLruStrategyDuration = System.currentTimeMillis() - start;
+        log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentLinkedQueueLruStrategyDuration);
 
         // just assert that
-        assertThat((double) concurrentStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
+        assertThat((double) concurrentLinkedQueueLruStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
 
         strategy = new ConcurrentLruStrategy<>();
         evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER, countDownLatch);
@@ -95,10 +96,12 @@ public class LruStrategyPerformanceTest {
         executorService.invokeAll(evictUseRemoveTasks);
         // choose randomly a task and print it to disable optimization
         strategy.evict();
-        long concurrentStrategy1Duration = System.currentTimeMillis() - start;
-        log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategy1Duration);
+        long concurrentStrategyDuration = System.currentTimeMillis() - start;
+        log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategyDuration);
+        assertThat((double) concurrentStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
     }
 
+    // Fixme
     @Test
     public void concurrentLruIsEqualToSynchronous1() throws InterruptedException {
         Strategy<Integer> strategy = new SynchronizedStrategy<>(new LruStrategy<>());
