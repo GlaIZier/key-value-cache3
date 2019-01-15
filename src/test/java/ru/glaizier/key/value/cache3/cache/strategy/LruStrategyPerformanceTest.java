@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
@@ -81,9 +82,6 @@ public class LruStrategyPerformanceTest {
         long concurrentLinkedQueueLruStrategyDuration = System.currentTimeMillis() - start;
         log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentLinkedQueueLruStrategyDuration);
 
-        // just assert that
-        assertThat((double) concurrentLinkedQueueLruStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
-
         strategy = new ConcurrentLruStrategy<>();
         evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER, countDownLatch);
         useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
@@ -98,55 +96,59 @@ public class LruStrategyPerformanceTest {
         strategy.evict();
         long concurrentStrategyDuration = System.currentTimeMillis() - start;
         log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategyDuration);
-        assertThat((double) concurrentStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
+
+        assertThat(synchronousStrategyDuration, is(lessThan((long) 5)));
+        assertThat(concurrentLinkedQueueLruStrategyDuration, is(lessThan((long) 5)));
+        assertThat(concurrentStrategyDuration, is(lessThan((long) 5)));
     }
 
-    // Fixme
     @Test
-    public void concurrentLruIsEqualToSynchronous1() throws InterruptedException {
+    public void concurrentLinkedQueueLruStrategyPerformPoorWhenNumberOfUseTasksIsHigh() throws InterruptedException {
         Strategy<Integer> strategy = new SynchronizedStrategy<>(new LruStrategy<>());
         // don't use latch for these tests
         CountDownLatch countDownLatch = new CountDownLatch(0);
-        List<Callable<Object>> evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
+        List<Callable<Object>> evictUseTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
         List<Callable<Object>> useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
-        evictUseRemoveTasks.addAll(useTasks);
-        Collections.shuffle(evictUseRemoveTasks);
+        evictUseTasks.addAll(useTasks);
+        Collections.shuffle(evictUseTasks);
 
         long start = System.currentTimeMillis();
-        executorService.invokeAll(evictUseRemoveTasks);
+        executorService.invokeAll(evictUseTasks);
         // choose randomly a task and print it to disable optimization
         strategy.evict();
         long synchronousStrategyDuration = System.currentTimeMillis() - start;
         log.info("SynchronousLruStrategy's duration: {} ms", synchronousStrategyDuration);
 
         strategy = new ConcurrentLinkedQueueLruStrategy<>();
-        evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
+        evictUseTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
         useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
-        evictUseRemoveTasks.addAll(useTasks);
-        Collections.shuffle(evictUseRemoveTasks);
+        evictUseTasks.addAll(useTasks);
+        Collections.shuffle(evictUseTasks);
 
         start = System.currentTimeMillis();
-        executorService.invokeAll(evictUseRemoveTasks);
+        executorService.invokeAll(evictUseTasks);
+        // choose randomly a task and print it to disable optimization
+        strategy.evict();
+        long concurrentLinkedQueueLruStrategyDuration = System.currentTimeMillis() - start;
+        log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentLinkedQueueLruStrategyDuration);
+
+        strategy = new ConcurrentLruStrategy<>();
+        evictUseTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
+        useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
+        evictUseTasks.addAll(useTasks);
+        Collections.shuffle(evictUseTasks);
+
+        start = System.currentTimeMillis();
+        executorService.invokeAll(evictUseTasks);
         // choose randomly a task and print it to disable optimization
         strategy.evict();
         long concurrentStrategyDuration = System.currentTimeMillis() - start;
-        log.info("ConcurrentLinkedQueueLruStrategy's duration: {} ms", concurrentStrategyDuration);
+        log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategyDuration);
 
-        // just assert that
-//        assertThat((double) concurrentStrategyDuration, is(lessThan(synchronousStrategyDuration * 1.1)));
+        assertThat(concurrentLinkedQueueLruStrategyDuration, is(greaterThan(synchronousStrategyDuration)));
+        assertThat(concurrentLinkedQueueLruStrategyDuration, is(greaterThan(concurrentStrategyDuration)));
 
-        strategy = new ConcurrentLruStrategy<>();
-        evictUseRemoveTasks = buildEvictTasks(strategy, TASKS_NUMBER / THREADS_NUMBER, countDownLatch);
-        useTasks = buildUseTasks(strategy, TASKS_NUMBER, countDownLatch);
-        evictUseRemoveTasks.addAll(useTasks);
-        Collections.shuffle(evictUseRemoveTasks);
-
-        start = System.currentTimeMillis();
-        executorService.invokeAll(evictUseRemoveTasks);
-        // choose randomly a task and print it to disable optimization
-        strategy.evict();
-        long concurrentStrategy1Duration = System.currentTimeMillis() - start;
-        log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategy1Duration);
+        assertThat(synchronousStrategyDuration, is(greaterThan(concurrentStrategyDuration)));
     }
 
 }
