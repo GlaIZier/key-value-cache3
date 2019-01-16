@@ -3,7 +3,7 @@ package ru.glaizier.key.value.cache3.cache.strategy;
 /**
  * @author GlaIZier
  */
-public class ConcurrentLruStrategy1ConcurrencyTest extends AbstractStrategyConcurrencyTest {
+public class ConcurrentLruStrategyConcurrencyTest extends AbstractStrategyConcurrencyTest {
 
     @Override
     protected Strategy<Integer> getStrategy() {

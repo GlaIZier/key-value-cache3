@@ -97,13 +97,13 @@ public class LruStrategyPerformanceTest {
         long concurrentStrategyDuration = System.currentTimeMillis() - start;
         log.info("ConcurrentLruStrategy's duration: {} ms", concurrentStrategyDuration);
 
-        assertThat(synchronousStrategyDuration, is(lessThan((long) 5)));
-        assertThat(concurrentLinkedQueueLruStrategyDuration, is(lessThan((long) 5)));
-        assertThat(concurrentStrategyDuration, is(lessThan((long) 5)));
+        assertThat(synchronousStrategyDuration, is(lessThan((long) 5 * 1000)));
+        assertThat(concurrentLinkedQueueLruStrategyDuration, is(lessThan((long) 5 * 1000)));
+        assertThat(concurrentStrategyDuration, is(lessThan((long) 5 * 1000)));
     }
 
     @Test
-    public void concurrentLinkedQueueLruStrategyPerformPoorWhenNumberOfUseTasksIsHigh() throws InterruptedException {
+    public void concurrentLinkedQueueLruStrategyUnderperformWhenNumberOfUseTasksIsHigh() throws InterruptedException {
         Strategy<Integer> strategy = new SynchronizedStrategy<>(new LruStrategy<>());
         // don't use latch for these tests
         CountDownLatch countDownLatch = new CountDownLatch(0);
@@ -147,8 +147,6 @@ public class LruStrategyPerformanceTest {
 
         assertThat(concurrentLinkedQueueLruStrategyDuration, is(greaterThan(synchronousStrategyDuration)));
         assertThat(concurrentLinkedQueueLruStrategyDuration, is(greaterThan(concurrentStrategyDuration)));
-
-        assertThat(synchronousStrategyDuration, is(greaterThan(concurrentStrategyDuration)));
     }
 
 }
