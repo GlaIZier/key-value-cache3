@@ -17,6 +17,8 @@ import javax.annotation.concurrent.NotThreadSafe;
 /**
  * Multi level cache implementation which evicts elements from first (top) levels to below ones.
  * Equal keys can't be present in different levels
+ * To make a concurrent SimpleCache, the same strategy as in ConcurrentLruStrategy can be used. In this case,
+ * a new method 'peek' in Cache is needed
  */
 @NotThreadSafe
 public class MultiLevelCache<K extends Serializable, V extends Serializable> implements Cache<K, V> {

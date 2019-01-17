@@ -1,20 +1,24 @@
 package ru.glaizier.key.value.cache3.cache;
 
-import ru.glaizier.key.value.cache3.cache.strategy.Strategy;
-import ru.glaizier.key.value.cache3.storage.Storage;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.NotThreadSafe;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.NotThreadSafe;
+
+import ru.glaizier.key.value.cache3.cache.strategy.Strategy;
+import ru.glaizier.key.value.cache3.storage.Storage;
+
 /**
- * Simple cache that updates strategy's statistics on get and put
+ * Simple cache that updates strategy's statistics on get and put.
+ * To make a concurrent SimpleCache, the same strategy as in ConcurrentLruStrategy can be used. In this case,
+ * a new method 'peek' in Cache is needed
  *
  * @author GlaIZier
  */
+
 @NotThreadSafe
 public class SimpleCache<K, V> implements Cache<K, V> {
 
