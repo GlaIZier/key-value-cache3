@@ -1,10 +1,8 @@
 package ru.glaizier.key.value.cache3.cache.strategy;
 
-import ru.glaizier.key.value.cache3.util.Entry;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+import static java.util.Optional.ofNullable;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
@@ -14,7 +12,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static java.util.Optional.*;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
+
+import ru.glaizier.key.value.cache3.util.Entry;
 
 /**
  * @author GlaIZier
@@ -96,7 +98,7 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
                 // execute the target task
                 while (true) {
                     if (operation.execute())
-                        return ((UseOperation)operation).getResult();
+                        return ((ResultOperation)operation).getResult();
                 }
             } else {
                 // help to execute another task
@@ -120,7 +122,7 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
                 // execute the target task
                 while (true) {
                     if (operation.execute()) {
-                        return ((RemoveOperation) operation).getResult();
+                        return ((ResultOperation) operation).getResult();
                     }
                 }
             } else {
@@ -146,6 +148,20 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
         }
 
         public abstract boolean execute();
+    }
+
+    private abstract class ResultOperation extends Operation {
+        protected final AtomicBoolean result = new AtomicBoolean(false);
+
+        private ResultOperation(Entry<K, Integer> keyToVersion, UUID hash) {
+            super(keyToVersion, hash);
+        }
+
+        public abstract boolean execute();
+
+        private boolean getResult() {
+            return result.get();
+        }
     }
 
     /**
@@ -203,9 +219,7 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
         }
     }
 
-    private class UseOperation extends Operation {
-        // Todo move to a separate base class
-        private final AtomicBoolean result = new AtomicBoolean(false);
+    private class UseOperation extends ResultOperation {
 
         private UseOperation(Entry<K, Integer> keyToVersion, UUID hash) {
             super(keyToVersion, hash);
@@ -233,15 +247,9 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
             }
             return false;
         }
-
-        private boolean getResult() {
-            return result.get();
-        }
     }
 
-    private class RemoveOperation extends Operation {
-        private final AtomicBoolean result = new AtomicBoolean(false);
-
+    private class RemoveOperation extends ResultOperation {
         private RemoveOperation(Entry<K, Integer> keyToVersion, UUID hash) {
             super(keyToVersion, hash);
         }
@@ -270,10 +278,6 @@ public class ConcurrentLruStrategy<K> implements Strategy<K> {
                 }
             }
             return false;
-        }
-
-        private boolean getResult() {
-            return result.get();
         }
     }
 }
