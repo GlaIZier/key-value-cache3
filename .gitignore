@@ -18,3 +18,5 @@ repository/
 target/
 logs/
 key-value-cache/
+.gradle/
+build/
