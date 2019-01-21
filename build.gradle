@@ -11,6 +11,7 @@ dependencies {
     compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
     testCompile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
     // Logback groovy config
+    // Fixme
     compile group: 'org.codehaus.groovy', name: 'groovy-all', version: '2.4.15'
 
     // @NotNull, @Nullable This annotations are used because they provides integration with Idea by default
