@@ -4,9 +4,9 @@
 Simple API and an implementation of the key-value cache. Version 3 - a thread-safe version.
 
 ### Build
-To build locally you need installed Maven locally:
+To build locally:
 ```
-mvn clean package
+./gradlew clean build
 ```
 
 ### LICENSE

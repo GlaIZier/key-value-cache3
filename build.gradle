@@ -1,4 +1,3 @@
-// Todo add gradle wrapper
 apply plugin: 'java'
 
 version = '1.0'

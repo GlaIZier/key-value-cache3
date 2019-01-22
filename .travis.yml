@@ -2,7 +2,7 @@ language: java
 jdk: oraclejdk8
 script:
   - export _JAVA_OPTIONS="-Xms2048m -Xmx4096m"
-  - gradle clean build
+  - ./gradlew clean build
 notifications:
   email:
     recipients:
