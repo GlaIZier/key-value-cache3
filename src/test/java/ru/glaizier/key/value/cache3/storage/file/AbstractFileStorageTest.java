@@ -1,24 +1,31 @@
 package ru.glaizier.key.value.cache3.storage.file;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import ru.glaizier.key.value.cache3.storage.Storage;
-
 import java.io.IOException;
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import ru.glaizier.key.value.cache3.storage.Storage;
 
 /**
  * @author GlaIZier
  */
 public abstract class AbstractFileStorageTest {
+
+    private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -63,7 +70,7 @@ public abstract class AbstractFileStorageTest {
 
     @Test
     public void put() {
-        System.out.println(storage.getClass().getName());
+        log.info(storage.getClass().getName());
         storage.put(1, "1");
         storage.put(2, "2");
 
